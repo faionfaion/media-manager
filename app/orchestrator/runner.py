@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -67,36 +68,99 @@ def process_queue() -> int:
     return processed
 
 
-def _run_pipeline(project_dir: Path, mode: str, media_slug: str) -> bool:
-    """Run a pipeline mode in the project directory."""
-    cmd = ["python3", "-m", "pipeline", mode, "-v"]
+# Timeouts per mode (seconds)
+_MODE_TIMEOUTS = {
+    "generate": 2400,  # 40 min — full pipeline: editorial plan, research, generate, review, deploy
+    "publish": 120,    # 2 min — mechanical TG publish, no LLM
+    "digest": 600,     # 10 min — compile + LLM summary
+}
 
+# Lock dir to prevent concurrent runs of the same pipeline
+_LOCK_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
+
+
+def _run_pipeline(project_dir: Path, mode: str, media_slug: str) -> bool:
+    """Run a pipeline mode in the project directory.
+
+    For 'generate' mode: runs as background process (too long for sync).
+    For 'publish'/'digest': runs synchronously with appropriate timeout.
+    """
+    cmd = ["python3", "-m", "pipeline", mode, "-v"]
+    timeout = _MODE_TIMEOUTS.get(mode, 600)
+
+    # Prevent concurrent runs of same pipeline/mode
+    lock_file = _LOCK_DIR / f".lock_{media_slug}_{mode}"
+    if lock_file.exists():
+        try:
+            pid = int(lock_file.read_text().strip())
+            os.kill(pid, 0)  # check if alive (signal 0)
+            logger.info("%s/%s already running (pid %d), skipping", media_slug, mode, pid)
+            return True  # not an error, just skip
+        except (ValueError, OSError):
+            lock_file.unlink(missing_ok=True)  # stale lock
+
+    if mode == "generate":
+        # Run in background — generate is too long for synchronous execution
+        return _run_pipeline_background(cmd, project_dir, media_slug, mode, lock_file)
+    else:
+        return _run_pipeline_sync(cmd, project_dir, media_slug, mode, timeout, lock_file)
+
+
+def _run_pipeline_sync(
+    cmd: list, project_dir: Path, media_slug: str, mode: str, timeout: int, lock_file: Path
+) -> bool:
+    """Run pipeline synchronously (for quick operations like publish/digest)."""
     try:
+        lock_file.write_text(str(os.getpid()))
         result = subprocess.run(
-            cmd,
-            cwd=str(project_dir),
-            capture_output=True,
-            text=True,
-            timeout=600,  # 10 min max
-            env=_get_env(project_dir),
+            cmd, cwd=str(project_dir), capture_output=True, text=True,
+            timeout=timeout, env=_get_env(project_dir),
         )
+        lock_file.unlink(missing_ok=True)
 
         if result.returncode == 0:
             logger.info("%s/%s completed successfully", media_slug, mode)
             return True
         else:
-            logger.error(
-                "%s/%s failed (exit %d): %s",
-                media_slug, mode, result.returncode,
-                result.stderr[-500:] if result.stderr else "no stderr",
-            )
+            logger.error("%s/%s failed (exit %d): %s",
+                         media_slug, mode, result.returncode,
+                         result.stderr[-500:] if result.stderr else "no stderr")
             return False
 
     except subprocess.TimeoutExpired:
-        logger.error("%s/%s timed out after 600s", media_slug, mode)
+        lock_file.unlink(missing_ok=True)
+        logger.error("%s/%s timed out after %ds", media_slug, mode, timeout)
         return False
     except Exception as e:
+        lock_file.unlink(missing_ok=True)
         logger.error("%s/%s error: %s", media_slug, mode, e)
+        return False
+
+
+def _run_pipeline_background(
+    cmd: list, project_dir: Path, media_slug: str, mode: str, lock_file: Path
+) -> bool:
+    """Run pipeline as background process (for long-running generate)."""
+    try:
+        log_file = project_dir / "state" / "logs" / "pipeline.log"
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(log_file, "a") as log_fd:
+            proc = subprocess.Popen(
+                cmd, cwd=str(project_dir), env=_get_env(project_dir),
+                stdout=log_fd, stderr=subprocess.STDOUT,
+            )
+
+        lock_file.write_text(str(proc.pid))
+        logger.info("%s/%s started in background (pid %d)", media_slug, mode, proc.pid)
+
+        # Notify that it started (completion will be detected by health monitor)
+        _notify_managers(f"🔄 <b>{MEDIA_OUTLETS[media_slug].name}</b>: {mode} started (pid {proc.pid})")
+        return True
+
+    except Exception as e:
+        lock_file.unlink(missing_ok=True)
+        logger.error("%s/%s background start failed: %s", media_slug, mode, e)
         return False
 
 

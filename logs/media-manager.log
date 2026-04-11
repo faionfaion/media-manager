@@ -212,3 +212,13 @@
 2026-04-11 10:37:26,953 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
 2026-04-11 10:37:57,067 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
 2026-04-11 10:38:27,148 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 10:38:45,231 INFO app.security.auth: Loaded 1 management chats
+2026-04-11 10:38:45,363 INFO httpx: HTTP Request: POST https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/deleteWebhook "HTTP/1.1 200 OK"
+2026-04-11 10:38:45,363 INFO __main__: Starting polling mode...
+2026-04-11 10:38:56,739 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 10:38:56,906 INFO httpx: HTTP Request: POST https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/sendMessage "HTTP/1.1 200 OK"
+2026-04-11 10:39:26,971 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=234632666&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 10:39:57,074 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=234632666&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 10:40:27,180 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=234632666&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 10:40:57,261 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=234632666&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 10:41:27,359 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=234632666&timeout=30 "HTTP/1.1 200 OK"
