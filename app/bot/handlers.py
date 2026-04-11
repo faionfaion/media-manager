@@ -22,7 +22,6 @@ from app.security.auth import (
     register_chat,
     unregister_chat,
 )
-from app.bot.agent import agent_analyze, agent_ask, agent_fix, agent_improve, run_agent_async
 from app.security.audit import audit_log, get_audit_stats, rotate_audit_logs
 from app.security.injection import InjectionResult, detect_prompt_injection, wrap_editor_input_safely
 from app.security.rate_limit import check_agent_rate_limit, check_rate_limit, get_remaining_quota
@@ -342,6 +341,7 @@ def _cmd_ask(args: list, user_id: int, chat_id: int) -> dict:
             break
 
     audit_log("agent_call", user_id, chat_id, f"/ask {question[:100]}")
+    from app.bot.agent import agent_ask, run_agent_async
     return run_agent_async(agent_ask, (question, media_slug), chat_id, "🤖 Investigating...")
 
 
@@ -358,6 +358,7 @@ def _cmd_analyze(args: list, user_id: int, chat_id: int) -> dict:
         return _reply(chat_id, "⏳ Agent rate limit (20/hour). Try again later.")
 
     audit_log("agent_call", user_id, chat_id, f"/analyze {target}")
+    from app.bot.agent import agent_analyze, run_agent_async
     return run_agent_async(agent_analyze, (target,), chat_id, f"🔍 Analyzing {MEDIA_OUTLETS[target].name}...")
 
 
@@ -726,6 +727,7 @@ def _handle_callback(callback: dict) -> dict | None:
         if not check_agent_rate_limit(user_id):
             return _reply(chat_id, "⏳ Agent rate limit (20/hour).")
         audit_log("agent_call", user_id, chat_id, f"confirm_fix:{media}")
+        from app.bot.agent import agent_fix, run_agent_async
         return run_agent_async(
             agent_fix, (media, "Check pipeline health, find and fix any issues"),
             chat_id, f"🔧 Fixing {MEDIA_OUTLETS[media].name}..."
@@ -738,6 +740,7 @@ def _handle_callback(callback: dict) -> dict | None:
         msg_text = callback.get("message", {}).get("text", "")
         suggestion = msg_text.split("\n")[1] if "\n" in msg_text else "General improvement"
         audit_log("agent_call", user_id, chat_id, f"confirm_improve: {suggestion[:80]}")
+        from app.bot.agent import agent_improve, run_agent_async
         return run_agent_async(
             agent_improve, (suggestion,),
             chat_id, "💡 Implementing improvement..."

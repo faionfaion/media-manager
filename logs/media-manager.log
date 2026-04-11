@@ -205,3 +205,10 @@
 2026-04-11 10:35:18,671 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
 2026-04-11 10:35:48,783 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
 2026-04-11 10:36:18,882 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 10:36:48,980 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 10:36:56,782 INFO app.security.auth: Loaded 1 management chats
+2026-04-11 10:36:56,881 INFO httpx: HTTP Request: POST https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/deleteWebhook "HTTP/1.1 200 OK"
+2026-04-11 10:36:56,882 INFO __main__: Starting polling mode...
+2026-04-11 10:37:26,953 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 10:37:57,067 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 10:38:27,148 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"

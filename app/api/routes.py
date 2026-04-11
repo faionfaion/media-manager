@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from app.api.landing import build_landing_html
 from app.api.miniapp import get_miniapp_html
 from app.bot.handlers import handle_update
 from app.security.auth import load_management_chats
@@ -167,52 +168,8 @@ def _check_api_auth(request: Request) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
-    """Simple dashboard landing page."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    cards = []
-    for slug, cfg in MEDIA_OUTLETS.items():
-        cards.append(f"""
-        <div class="card">
-            <h2>{cfg.name}</h2>
-            <p><a href="{cfg.site_url}" target="_blank">{cfg.site_url}</a></p>
-            <p>TG: <a href="https://t.me/{cfg.tg_channel_username}" target="_blank">@{cfg.tg_channel_username}</a></p>
-            <p>Lang: {cfg.lang if isinstance(cfg.lang, str) else ', '.join(cfg.lang)}</p>
-        </div>""")
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Media Manager — Faion Network</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: -apple-system, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 2rem; }}
-        h1 {{ color: #fff; margin-bottom: 0.5rem; }}
-        .subtitle {{ color: #888; margin-bottom: 2rem; }}
-        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }}
-        .card {{ background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 1.5rem; }}
-        .card h2 {{ color: #4fc3f7; margin-bottom: 0.5rem; }}
-        .card a {{ color: #81c784; text-decoration: none; }}
-        .card a:hover {{ text-decoration: underline; }}
-        .card p {{ margin: 0.3rem 0; color: #bbb; }}
-        .security {{ background: #1b2a1b; border-color: #2e7d32; margin-top: 2rem; padding: 1.5rem; border-radius: 12px; border: 1px solid #2e7d32; }}
-        .security h2 {{ color: #66bb6a; }}
-    </style>
-</head>
-<body>
-    <h1>Media Manager</h1>
-    <p class="subtitle">Faion Network — {today}</p>
-    <div class="grid">
-        {''.join(cards)}
-    </div>
-    <div class="security">
-        <h2>Security Guardrails</h2>
-        <p>✅ TG user ID whitelist &nbsp; ✅ Chat registration &nbsp; ✅ Prompt injection detection (5 categories)</p>
-        <p>✅ Rate limiting &nbsp; ✅ Input sanitization &nbsp; ✅ Safe prompt envelopes &nbsp; ✅ Audit logging</p>
-    </div>
-</body>
-</html>"""
+    """Public landing page showcasing all media outlets."""
+    return build_landing_html()
 
 
 # -- Telegram Mini App --
