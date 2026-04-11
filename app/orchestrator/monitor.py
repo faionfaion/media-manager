@@ -73,15 +73,8 @@ def check_pipeline_health() -> list[str]:
         content_dir = cfg.project_dir / "content"
 
         # 1. Check if generate ran today (by looking for today's content)
-        today_articles = 0
-        if content_dir.exists():
-            for md in content_dir.glob("*.md"):
-                try:
-                    text = md.read_text(encoding="utf-8")[:500]
-                    if f'date: "{today}"' in text:
-                        today_articles += 1
-                except OSError:
-                    pass
+        from app.utils import count_articles_today
+        today_articles = count_articles_today(content_dir, today)
 
         # Alert if no articles by noon UTC
         if now.hour >= 12 and today_articles == 0:

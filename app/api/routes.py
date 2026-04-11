@@ -94,17 +94,10 @@ async def api_status(request: Request):
     status = {}
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+    from app.utils import count_articles_today
+
     for slug, cfg in MEDIA_OUTLETS.items():
-        content_dir = cfg.project_dir / "content"
-        articles_today = 0
-        if content_dir.exists():
-            for md in content_dir.glob("*.md"):
-                try:
-                    text = md.read_text(encoding="utf-8")[:500]
-                    if f'date: "{today}"' in text:
-                        articles_today += 1
-                except OSError:
-                    pass
+        articles_today = count_articles_today(cfg.project_dir / "content", today)
 
         runs_dir = cfg.project_dir / "state" / "runs"
         last_run = None
@@ -199,17 +192,10 @@ async def miniapp_status(request: Request):
     _verify_miniapp(request)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     status = {}
+    from app.utils import count_articles_today as _count
+
     for slug, cfg in MEDIA_OUTLETS.items():
-        content_dir = cfg.project_dir / "content"
-        articles_today = 0
-        if content_dir.exists():
-            for md in content_dir.glob("*.md"):
-                try:
-                    text = md.read_text(encoding="utf-8")[:500]
-                    if f'date: "{today}"' in text:
-                        articles_today += 1
-                except OSError:
-                    pass
+        articles_today = _count(cfg.project_dir / "content", today)
 
         runs_dir = cfg.project_dir / "state" / "runs"
         last_run = None
@@ -239,13 +225,15 @@ async def miniapp_articles(media_slug: str, request: Request):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     articles = []
 
+    from app.utils import is_article_today
+
     content_dir = cfg.project_dir / "content"
     if content_dir.exists():
         for md in sorted(content_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
             try:
-                text = md.read_text(encoding="utf-8")[:1000]
-                if f'date: "{today}"' not in text:
+                if not is_article_today(md, today):
                     continue
+                text = md.read_text(encoding="utf-8")[:1000]
                 title = ""
                 atype = ""
                 for line in text.split("\n"):

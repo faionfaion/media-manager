@@ -206,16 +206,8 @@ def _cmd_status(args: list, user_id: int, chat_id: int) -> dict:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         # Count today's articles
-        content_dir = cfg.project_dir / "content"
-        today_count = 0
-        if content_dir.exists():
-            for md in content_dir.glob("*.md"):
-                try:
-                    text = md.read_text(encoding="utf-8")[:500]
-                    if f'date: "{today}"' in text:
-                        today_count += 1
-                except OSError:
-                    pass
+        from app.utils import count_articles_today
+        today_count = count_articles_today(cfg.project_dir / "content", today)
 
         # Check last run
         runs_dir = state_dir / "runs"
