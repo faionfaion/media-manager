@@ -1,0 +1,3 @@
+2026-04-11 09:07:33,171 INFO app.security.auth: Loaded 1 management chats
+2026-04-11 09:07:33,312 INFO httpx: HTTP Request: POST https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/deleteWebhook "HTTP/1.1 200 OK"
+2026-04-11 09:07:33,313 INFO __main__: Starting polling mode...
