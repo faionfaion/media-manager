@@ -1,12 +1,14 @@
 """Pipeline health monitor — detects failures and missed schedules.
 
 Called periodically by the cron orchestrator. Sends alerts to management chats.
+Also detects completion/failure of background pipeline processes.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -19,9 +21,50 @@ _last_alerts: dict[str, datetime] = {}
 ALERT_COOLDOWN = timedelta(hours=1)
 
 
+_LOCK_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
+
+
+def check_background_processes() -> list[str]:
+    """Detect completed/failed background pipeline processes."""
+    alerts: list[str] = []
+
+    for lock_file in _LOCK_DIR.glob(".lock_*"):
+        # Parse: .lock_{media}_{mode}
+        parts = lock_file.stem.lstrip(".lock_").split("_", 1)
+        if len(parts) < 2:
+            continue
+        media_slug, mode = parts[0], parts[1]
+
+        try:
+            pid = int(lock_file.read_text().strip())
+        except (ValueError, OSError):
+            lock_file.unlink(missing_ok=True)
+            continue
+
+        # Check if process is still running
+        try:
+            os.kill(pid, 0)
+            # Still running — no alert
+        except OSError:
+            # Process finished — check exit status via /proc or just report
+            lock_file.unlink(missing_ok=True)
+            cfg = MEDIA_OUTLETS.get(media_slug)
+            name = cfg.name if cfg else media_slug
+
+            alert_key = f"bg_done_{media_slug}_{mode}_{pid}"
+            if _should_alert(alert_key):
+                alerts.append(
+                    f"✅ <b>{name}</b>: background {mode} completed (pid {pid})"
+                )
+
+    return alerts
+
+
 def check_pipeline_health() -> list[str]:
     """Check all pipelines for issues. Returns list of alert messages."""
-    alerts: list[str] = []
+    # First check background processes
+    alerts: list[str] = check_background_processes()
+
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
 
