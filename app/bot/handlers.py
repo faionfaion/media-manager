@@ -22,9 +22,10 @@ from app.security.auth import (
     register_chat,
     unregister_chat,
 )
+from app.bot.agent import agent_analyze, agent_ask, agent_fix, agent_improve, run_agent_async
 from app.security.audit import audit_log, get_audit_stats, rotate_audit_logs
 from app.security.injection import InjectionResult, detect_prompt_injection, wrap_editor_input_safely
-from app.security.rate_limit import check_rate_limit, get_remaining_quota
+from app.security.rate_limit import check_agent_rate_limit, check_rate_limit, get_remaining_quota
 from app.security.validation import (
     sanitize_note_text,
     validate_callback_data,
@@ -142,6 +143,11 @@ def _dispatch_command(text: str, user_id: int, chat_id: int) -> dict | None:
         "/publish": _cmd_publish,
         "/skip": _cmd_skip,
         "/note": _cmd_note,
+        "/ask": _cmd_ask,
+        "/fix": _cmd_fix,
+        "/analyze": _cmd_analyze,
+        "/improve": _cmd_improve,
+        "/dashboard": _cmd_dashboard,
         "/outlets": _cmd_outlets,
         "/schedule": _cmd_schedule,
         "/logs": _cmd_logs,
@@ -172,11 +178,16 @@ def _cmd_help(args: list, user_id: int, chat_id: int) -> dict:
         "<b>Editorial:</b>\n"
         "/note [media] <text> — add editor note\n"
         "(or just send plain text — saved as note for all outlets)\n\n"
+        "<b>🤖 Agent (AI-powered):</b>\n"
+        "/ask <question> — ask anything about the system\n"
+        "/analyze <media> — content & pipeline analysis\n"
+        "/fix <media> — diagnose & repair issues\n"
+        "/improve <suggestion> — implement improvements\n\n"
         "<b>Management:</b>\n"
+        "/dashboard — open management app\n"
         "/outlets — list all managed media\n"
-        "/register — register this chat as management chat\n"
-        "/unregister — remove this chat\n"
-        "/security — security status & stats\n\n"
+        "/register — register this chat\n"
+        "/security — security status\n\n"
         "<b>Media slugs:</b> neromedia, longlife, pashtelka"
     ))
 
@@ -302,6 +313,120 @@ def _cmd_digest(args: list, user_id: int, chat_id: int) -> dict:
 
     _queue_command(target, "digest", user_id)
     return _reply(chat_id, f"📋 Digest queued for {MEDIA_OUTLETS[target].name}.")
+
+
+# -- Agent-powered commands --
+
+def _cmd_ask(args: list, user_id: int, chat_id: int) -> dict:
+    """Ask the agent anything about the media system."""
+    if not args:
+        return _reply(chat_id, "Usage: /ask <question>\nExample: /ask how many articles does pashtelka have today?")
+
+    question = " ".join(args)
+
+    # Injection check
+    inj = detect_prompt_injection(question)
+    if inj.risk_level in ("high", "critical"):
+        audit_log("agent_injection_blocked", user_id, chat_id, question, inj.explanation)
+        return _reply(chat_id, f"⚠️ Blocked: {inj.explanation}")
+
+    # Agent rate limit
+    if not check_agent_rate_limit(user_id):
+        return _reply(chat_id, "⏳ Agent rate limit (20/hour). Try again later.")
+
+    # Detect media slug from question
+    media_slug = None
+    for slug in MEDIA_OUTLETS:
+        if slug in question.lower():
+            media_slug = slug
+            break
+
+    audit_log("agent_call", user_id, chat_id, f"/ask {question[:100]}")
+    return run_agent_async(agent_ask, (question, media_slug), chat_id, "🤖 Investigating...")
+
+
+def _cmd_analyze(args: list, user_id: int, chat_id: int) -> dict:
+    """AI-powered content analysis."""
+    if not args:
+        return _reply(chat_id, "Usage: /analyze <media>\nExample: /analyze pashtelka")
+
+    target = args[0]
+    if target not in MEDIA_OUTLETS:
+        return _reply(chat_id, f"Unknown media: {target}")
+
+    if not check_agent_rate_limit(user_id):
+        return _reply(chat_id, "⏳ Agent rate limit (20/hour). Try again later.")
+
+    audit_log("agent_call", user_id, chat_id, f"/analyze {target}")
+    return run_agent_async(agent_analyze, (target,), chat_id, f"🔍 Analyzing {MEDIA_OUTLETS[target].name}...")
+
+
+def _cmd_fix(args: list, user_id: int, chat_id: int) -> dict:
+    """Diagnose & fix pipeline issues — requires confirmation."""
+    if not args:
+        return _reply(chat_id, "Usage: /fix <media> [description]\nExample: /fix pashtelka pipeline stuck")
+
+    target = args[0]
+    if target not in MEDIA_OUTLETS:
+        return _reply(chat_id, f"Unknown media: {target}")
+
+    problem = " ".join(args[1:]) if len(args) > 1 else "Check pipeline health, find and fix any issues"
+
+    # Injection check on problem description
+    inj = detect_prompt_injection(problem)
+    if inj.risk_level in ("high", "critical"):
+        return _reply(chat_id, f"⚠️ Blocked: {inj.explanation}")
+
+    return _reply_with_buttons(
+        chat_id,
+        f"🔧 Fix <b>{MEDIA_OUTLETS[target].name}</b>?\n"
+        f"Problem: {problem[:200]}\n\n"
+        f"The agent will read logs, diagnose, and apply fixes.",
+        [
+            {"text": "✅ Confirm fix", "callback_data": f"confirm_fix:{target}"},
+            {"text": "❌ Cancel", "callback_data": "cancel"},
+        ],
+    )
+
+
+def _cmd_improve(args: list, user_id: int, chat_id: int) -> dict:
+    """Implement system improvements — requires confirmation."""
+    if not args:
+        return _reply(chat_id, "Usage: /improve <suggestion>\nExample: /improve add weekend content planning")
+
+    suggestion = " ".join(args)
+
+    inj = detect_prompt_injection(suggestion)
+    if inj.risk_level in ("high", "critical"):
+        return _reply(chat_id, f"⚠️ Blocked: {inj.explanation}")
+
+    return _reply_with_buttons(
+        chat_id,
+        f"💡 Implement improvement?\n"
+        f"<i>{suggestion[:300]}</i>\n\n"
+        f"The agent will read code, make changes, and report.",
+        [
+            {"text": "✅ Confirm improve", "callback_data": "confirm_improve:manager"},
+            {"text": "❌ Cancel", "callback_data": "cancel"},
+        ],
+    )
+
+
+def _cmd_dashboard(args: list, user_id: int, chat_id: int) -> dict:
+    """Open the Telegram Mini App management dashboard."""
+    return {
+        "method": "sendMessage",
+        "chat_id": chat_id,
+        "text": "📱 <b>Media Manager Dashboard</b>\n\nOpen the management interface:",
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+        "reply_markup": {
+            "inline_keyboard": [[{
+                "text": "📊 Open Dashboard",
+                "web_app": {"url": "https://media-manager.faion.net/mini-app"},
+            }]],
+        },
+    }
 
 
 def _cmd_publish(args: list, user_id: int, chat_id: int) -> dict:
@@ -594,5 +719,28 @@ def _handle_callback(callback: dict) -> dict | None:
             return _reply(chat_id, "⚠️ Invalid article slug.")
         _queue_command(media, "skip", user_id, {"slug": safe_slug})
         return _reply(chat_id, f"✅ Skipping '{safe_slug}' in {MEDIA_OUTLETS[media].name}.")
+
+    elif action == "confirm_fix":
+        if not validate_media_slug(media, _VALID_MEDIA_SLUGS):
+            return _reply(chat_id, f"Unknown media: {media}")
+        if not check_agent_rate_limit(user_id):
+            return _reply(chat_id, "⏳ Agent rate limit (20/hour).")
+        audit_log("agent_call", user_id, chat_id, f"confirm_fix:{media}")
+        return run_agent_async(
+            agent_fix, (media, "Check pipeline health, find and fix any issues"),
+            chat_id, f"🔧 Fixing {MEDIA_OUTLETS[media].name}..."
+        )
+
+    elif action == "confirm_improve":
+        if not check_agent_rate_limit(user_id):
+            return _reply(chat_id, "⏳ Agent rate limit (20/hour).")
+        # Retrieve suggestion from the original message text
+        msg_text = callback.get("message", {}).get("text", "")
+        suggestion = msg_text.split("\n")[1] if "\n" in msg_text else "General improvement"
+        audit_log("agent_call", user_id, chat_id, f"confirm_improve: {suggestion[:80]}")
+        return run_agent_async(
+            agent_improve, (suggestion,),
+            chat_id, "💡 Implementing improvement..."
+        )
 
     return None

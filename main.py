@@ -17,6 +17,18 @@ from pathlib import Path
 # Ensure project root is in path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# Load workspace .env for API keys (ANTHROPIC_API_KEY, MANAGER_BOT_TOKEN, etc.)
+import os
+_env_file = Path.home() / "workspace" / ".env"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, val = line.partition("=")
+            key, val = key.strip(), val.strip().strip('"').strip("'")
+            if key and not os.environ.get(key):  # don't override existing
+                os.environ[key] = val
+
 from config.settings import API_HOST, API_PORT, LOG_DIR, MANAGER_BOT_TOKEN
 
 logging.basicConfig(

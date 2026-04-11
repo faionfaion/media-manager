@@ -95,6 +95,17 @@ MAX_MESSAGE_LENGTH = 2000  # max chars from editor messages
 MAX_COMMANDS_PER_MINUTE = 10  # rate limit per user
 PROMPT_INJECTION_PATTERNS_FILE = ROOT / "config" / "injection_patterns.json"
 
+# Agent SDK config
+AGENT_MODEL = os.getenv("AGENT_MODEL", "opus")
+AGENT_TIMEOUT = 120  # seconds per agent call
+AGENT_RATE_LIMIT_PER_HOUR = 20  # max agent calls per hour (cost control)
+AGENT_RETRY_MAX = 3
+AGENT_RETRY_BASE_DELAY = 5.0
+AGENT_RETRY_MAX_DELAY = 60.0
+
+# Allowed pipeline dirs for agent tools (sandbox)
+AGENT_ALLOWED_DIRS = [str(cfg.project_dir) for cfg in MEDIA_OUTLETS.values()] + [str(ROOT)]
+
 # Logging
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
