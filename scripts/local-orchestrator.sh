@@ -44,6 +44,16 @@ load_management_chats()
 run_scheduled()
 "
 
+# Morning briefing (once per day after 7 UTC)
+python3 -c "
+import sys; sys.path.insert(0, '.')
+from app.security.auth import load_management_chats
+from app.orchestrator.briefing import should_send_briefing, send_briefing
+load_management_chats()
+if should_send_briefing():
+    send_briefing()
+"
+
 # Health monitoring (check every run, alerts have 1h cooldown)
 python3 -c "
 import sys; sys.path.insert(0, '.')

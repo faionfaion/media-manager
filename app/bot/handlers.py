@@ -137,6 +137,7 @@ def _dispatch_command(text: str, user_id: int, chat_id: int) -> dict | None:
         "/help": _cmd_help,
         "/status": _cmd_status,
         "/plan": _cmd_plan,
+        "/generate": _cmd_generate,
         "/publish": _cmd_publish,
         "/skip": _cmd_skip,
         "/note": _cmd_note,
@@ -161,10 +162,11 @@ def _cmd_help(args: list, user_id: int, chat_id: int) -> dict:
         "<b>Pipeline Control:</b>\n"
         "/status [media] — pipeline & channel status\n"
         "/plan [media] — today's editorial plan\n"
-        "/publish [media] — trigger immediate publish\n"
-        "/skip [media] [slug] — skip an article\n"
-        "/schedule [media] — show/edit cron schedule\n"
-        "/logs [media] [N] — last N log lines\n\n"
+        "/generate <media> — trigger full content generation\n"
+        "/publish <media> — trigger immediate TG publish\n"
+        "/skip <media> <slug> — skip an article\n"
+        "/schedule [media] — show cron schedules\n"
+        "/logs <media> [N] — last N log lines\n\n"
         "<b>Editorial:</b>\n"
         "/note [media] <text> — add editor note\n"
         "(or just send plain text — saved as note for all outlets)\n\n"
@@ -263,6 +265,28 @@ def _cmd_plan(args: list, user_id: int, chat_id: int) -> dict:
         lines.append("")
 
     return _reply(chat_id, "\n".join(lines))
+
+
+def _cmd_generate(args: list, user_id: int, chat_id: int) -> dict:
+    """Trigger content generation — requires confirmation (heavy LLM operation)."""
+    if not args:
+        return _reply(chat_id, "Usage: /generate <media>\nExample: /generate pashtelka")
+
+    target = args[0]
+    if target not in MEDIA_OUTLETS:
+        return _reply(chat_id, f"Unknown media: {target}")
+
+    cfg = MEDIA_OUTLETS[target]
+    return _reply_with_buttons(
+        chat_id,
+        f"🔄 Generate content for <b>{cfg.name}</b>?\n"
+        f"This runs the full pipeline (editorial plan → articles → deploy).\n"
+        f"Takes 5-15 minutes per outlet.",
+        [
+            {"text": "✅ Confirm generate", "callback_data": f"confirm_generate:{target}"},
+            {"text": "❌ Cancel", "callback_data": "cancel"},
+        ],
+    )
 
 
 def _cmd_publish(args: list, user_id: int, chat_id: int) -> dict:
@@ -535,7 +559,13 @@ def _handle_callback(callback: dict) -> dict | None:
     if action == "cancel":
         return _reply(chat_id, "❌ Cancelled.")
 
-    if action == "confirm_publish":
+    if action == "confirm_generate":
+        if not validate_media_slug(media, _VALID_MEDIA_SLUGS):
+            return _reply(chat_id, f"Unknown media: {media}")
+        _queue_command(media, "generate", user_id)
+        return _reply(chat_id, f"🔄 Generate queued for {MEDIA_OUTLETS[media].name}. This will take 5-15 min.")
+
+    elif action == "confirm_publish":
         if not validate_media_slug(media, _VALID_MEDIA_SLUGS):
             return _reply(chat_id, f"Unknown media: {media}")
         _queue_command(media, "publish", user_id)
