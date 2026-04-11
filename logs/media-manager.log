@@ -93,3 +93,18 @@
 2026-04-11 09:42:45,754 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
 2026-04-11 09:43:15,858 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
 2026-04-11 09:43:45,954 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:44:03,246 INFO app.security.auth: Loaded 1 management chats
+2026-04-11 09:44:03,372 INFO httpx: HTTP Request: POST https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/deleteWebhook "HTTP/1.1 200 OK"
+2026-04-11 09:44:03,373 INFO __main__: Starting polling mode...
+2026-04-11 09:44:33,452 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:45:03,554 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:45:33,651 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:46:03,753 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:46:33,870 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:47:03,945 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:47:34,025 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:48:04,174 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:48:34,244 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:49:04,314 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:49:34,424 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:50:04,528 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"

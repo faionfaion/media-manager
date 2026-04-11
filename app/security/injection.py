@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 # Direct instruction override attempts
 _INSTRUCTION_OVERRIDE = [
     r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|rules?|guidelines?|prompts?)",
-    r"(?i)disregard\s+(all\s+)?(previous|prior|above)\s+(instructions?|rules?)",
+    r"(?i)disregard\s+(all\s+)?(previous|prior|above|your)\s+(instructions?|rules?)",
+    r"(?i)disregard\s+your\s+\w+",
     r"(?i)forget\s+(everything|all)\s+(you\s+)?(know|were\s+told)",
     r"(?i)you\s+are\s+now\s+(a|an)\s+",
     r"(?i)new\s+instructions?:\s*",
@@ -46,6 +47,7 @@ _ROLE_MANIPULATION = [
 # Data exfiltration attempts
 _EXFILTRATION = [
     r"(?i)repeat\s+(back\s+)?(your|the|all)\s+(system\s+)?(prompt|instructions?|rules?)",
+    r"(?i)repeat\s+back\s+all\s+your\s+\w+",
     r"(?i)show\s+(me\s+)?(your|the)\s+(system\s+)?(prompt|instructions?|config)",
     r"(?i)what\s+(are|were)\s+your\s+(initial\s+)?(instructions?|rules?|system\s+prompt)",
     r"(?i)print\s+(your|the)\s+(prompt|instructions?|config|env|token|secret|api.?key)",
@@ -55,8 +57,8 @@ _EXFILTRATION = [
 
 # Code execution / tool abuse
 _CODE_EXECUTION = [
-    r"(?i)execute\s+(this\s+)?(code|command|script|shell)",
-    r"(?i)run\s+(this\s+)?(bash|python|shell|command)",
+    r"(?i)execute\s+(this\s+)?(\w+\s+)?(code|command|script|shell)",
+    r"(?i)run\s+(this\s+)?(\w+\s+)?(bash|python|shell|command|script|code)",
     r"(?i)(import\s+os|subprocess|eval\(|exec\(|__import__)",
     r"(?i)(rm\s+-rf|curl\s+.*\|.*sh|wget\s+.*\|)",
     r"(?i)\\x[0-9a-f]{2}",  # hex-encoded payloads
@@ -77,6 +79,7 @@ _ENCODING_EVASION = [
 _MULTILANG_INJECTION = [
     # "Ignore previous instructions" in Ukrainian
     r"(?i)ігнор(уй|увати)\s+(попередн|всі|усі)\s+(інструкці|правил|вказівк)",
+    r"(?i)ігнор(уй|увати)\s+усі\s+попередн",
     # "You are now" / "from now on" in Ukrainian
     r"(?i)відтепер\s+(ти|ви)\s+",
     r"(?i)тепер\s+ти\s+(є|будеш)\s+",
