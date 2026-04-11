@@ -10,10 +10,8 @@ ROOT = Path(__file__).resolve().parent.parent
 PROJECTS_DIR = Path.home() / "workspace" / "projects"
 
 # Management bot (separate from publishing bots)
-MANAGER_BOT_TOKEN = os.getenv(
-    "MANAGER_BOT_TOKEN",
-    "8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA",
-)
+# Token loaded from ~/workspace/.env or environment
+MANAGER_BOT_TOKEN = os.getenv("MANAGER_BOT_TOKEN", "")
 
 # Authorized editor Telegram user IDs (only these can send commands)
 AUTHORIZED_EDITORS: set[int] = {

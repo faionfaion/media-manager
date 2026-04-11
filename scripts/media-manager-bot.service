@@ -10,6 +10,7 @@ ExecStart=/usr/bin/python3 main.py poll
 Restart=always
 RestartSec=10
 Environment=PYTHONPATH=/home/nero/workspace/projects/media-manager-faion-net
+EnvironmentFile=/home/nero/workspace/.env
 
 [Install]
 WantedBy=multi-user.target
