@@ -22,14 +22,21 @@ from app.security.auth import (
     register_chat,
     unregister_chat,
 )
+from app.security.audit import audit_log, get_audit_stats, rotate_audit_logs
 from app.security.injection import InjectionResult, detect_prompt_injection, wrap_editor_input_safely
 from app.security.rate_limit import check_rate_limit, get_remaining_quota
+from app.security.validation import (
+    sanitize_note_text,
+    validate_callback_data,
+    validate_command_args,
+    validate_media_slug,
+    validate_slug,
+)
 from config.settings import MEDIA_OUTLETS
 
 logger = logging.getLogger(__name__)
 
-# Audit log for all commands
-AUDIT_LOG = Path(__file__).resolve().parent.parent.parent / "logs" / "audit.jsonl"
+_VALID_MEDIA_SLUGS = set(MEDIA_OUTLETS.keys())
 
 
 def handle_update(update: dict) -> dict | None:
@@ -54,20 +61,20 @@ def handle_update(update: dict) -> dict | None:
 
     # 0. Block forwarded messages — could bypass auth context
     if message.get("forward_from") or message.get("forward_from_chat") or message.get("forward_origin"):
-        _audit("forwarded_blocked", user_id, chat_id, text)
+        audit_log("forwarded_blocked", user_id, chat_id, text)
         logger.warning("Blocked forwarded message from user %d", user_id)
         return _reply(chat_id, "⚠️ Forwarded messages are not accepted. Please type your command directly.")
 
     # 1. Auth check
     if not is_authorized(user_id):
         logger.warning("Unauthorized user %d attempted command: %s", user_id, text[:50])
-        _audit("unauthorized", user_id, chat_id, text)
+        audit_log("unauthorized", user_id, chat_id, text)
         return None  # Silent ignore — don't reveal bot exists to strangers
 
     # 2. Rate limit
     if not check_rate_limit(user_id):
         remaining = get_remaining_quota(user_id)
-        _audit("rate_limited", user_id, chat_id, text)
+        audit_log("rate_limited", user_id, chat_id, text)
         return _reply(chat_id, f"⏳ Rate limit reached. Try again in ~1 minute. ({remaining} remaining)")
 
     # 3. Prompt injection check (for non-command messages that will reach LLM)
@@ -75,7 +82,7 @@ def handle_update(update: dict) -> dict | None:
     if not text.startswith("/"):
         injection_result = detect_prompt_injection(text)
         if injection_result.risk_level in ("high", "critical"):
-            _audit("injection_blocked", user_id, chat_id, text, injection_result.explanation)
+            audit_log("injection_blocked", user_id, chat_id, text, injection_result.explanation)
             logger.warning(
                 "Prompt injection blocked from user %d: %s",
                 user_id, injection_result.explanation,
@@ -101,7 +108,7 @@ def handle_update(update: dict) -> dict | None:
         )
 
     # -- Dispatch commands --
-    _audit("command", user_id, chat_id, text)
+    audit_log("command", user_id, chat_id, text)
 
     if text.startswith("/"):
         return _dispatch_command(text, user_id, chat_id)
@@ -383,30 +390,29 @@ def _cmd_security(args: list, user_id: int, chat_id: int) -> dict:
     from config.settings import AUTHORIZED_EDITORS
 
     chats = get_management_chats()
-    audit_count = 0
-    blocked_count = 0
-    if AUDIT_LOG.exists():
-        for line in AUDIT_LOG.read_text(encoding="utf-8").splitlines():
-            audit_count += 1
-            if '"injection_blocked"' in line or '"unauthorized"' in line:
-                blocked_count += 1
+    stats = get_audit_stats()
+
+    # Rotate old logs while we're here
+    rotate_audit_logs()
 
     return _reply(chat_id, (
         "<b>🔒 Security Status</b>\n\n"
         f"Authorized editors: {len(AUTHORIZED_EDITORS)}\n"
         f"Management chats: {len(chats)}\n"
-        f"Audit log entries: {audit_count}\n"
-        f"Blocked attempts: {blocked_count}\n\n"
+        f"Audit log entries: {stats['total_entries']}\n"
+        f"Blocked attempts: {stats['blocked']}\n"
+        f"Audit log files: {stats['files']}\n\n"
         "<b>Guardrails active:</b>\n"
         "✅ User auth (TG user ID whitelist)\n"
         "✅ Chat registration required\n"
         "✅ Forwarded message blocking\n"
         "✅ Prompt injection detection (5 categories)\n"
         "✅ Rate limiting (10 cmd/min)\n"
-        "✅ Input sanitization\n"
+        "✅ Input validation (slug, callback, args)\n"
         "✅ Safe prompt envelope wrapping\n"
         "✅ Destructive command confirmation (inline buttons)\n"
-        "✅ Audit logging"
+        "✅ Audit logging (daily rotation, 30d retention)\n"
+        "✅ File size guards (DoS prevention)"
     ))
 
 
@@ -415,7 +421,7 @@ def _cmd_register(user_id: int, chat_id: int) -> dict:
     if not is_authorized(user_id):
         return _reply(chat_id, "⛔ Not authorized.")
     if register_chat(chat_id):
-        _audit("register_chat", user_id, chat_id, f"chat_id={chat_id}")
+        audit_log("register_chat", user_id, chat_id, f"chat_id={chat_id}")
         return _reply(chat_id, f"✅ Chat {chat_id} registered as management chat.")
     return _reply(chat_id, "ℹ️ This chat is already registered.")
 
@@ -423,7 +429,7 @@ def _cmd_register(user_id: int, chat_id: int) -> dict:
 def _cmd_unregister(user_id: int, chat_id: int) -> dict:
     """Unregister current chat."""
     if unregister_chat(chat_id):
-        _audit("unregister_chat", user_id, chat_id, f"chat_id={chat_id}")
+        audit_log("unregister_chat", user_id, chat_id, f"chat_id={chat_id}")
         return _reply(chat_id, "✅ Chat unregistered.")
     return _reply(chat_id, "ℹ️ This chat was not registered.")
 
@@ -502,21 +508,6 @@ def _queue_command(media_slug: str, command: str, user_id: int, extra: dict | No
     logger.info("Queued command: %s/%s by user %d", media_slug, command, user_id)
 
 
-def _audit(action: str, user_id: int, chat_id: int, text: str, detail: str = "") -> None:
-    """Append to audit log."""
-    AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
-    entry = json.dumps({
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "action": action,
-        "user_id": user_id,
-        "chat_id": chat_id,
-        "text": text[:200],
-        "detail": detail,
-    }, ensure_ascii=False)
-    with open(AUDIT_LOG, "a", encoding="utf-8") as f:
-        f.write(entry + "\n")
-
-
 def _handle_callback(callback: dict) -> dict | None:
     """Handle inline button callbacks (confirmations, cancellations)."""
     user = callback.get("from", {})
@@ -531,30 +522,32 @@ def _handle_callback(callback: dict) -> dict | None:
     data = callback.get("data", "")
     chat_id = callback.get("message", {}).get("chat", {}).get("id", 0)
 
-    _audit("callback", user_id, chat_id, data)
-
-    # Cancel button
-    if data == "cancel":
-        return _reply(chat_id, "❌ Cancelled.")
-
-    # Parse callback data: "action:media:param"
-    parts = data.split(":", 2)
-    if len(parts) < 2:
+    # Validate callback data structure
+    parsed = validate_callback_data(data)
+    if parsed is None:
+        audit_log("invalid_callback", user_id, chat_id, data)
+        logger.warning("Invalid callback_data from user %d: %s", user_id, data[:50])
         return None
 
-    action, media = parts[0], parts[1]
-    param = parts[2] if len(parts) > 2 else ""
+    action, media, param = parsed
+    audit_log("callback", user_id, chat_id, data)
+
+    if action == "cancel":
+        return _reply(chat_id, "❌ Cancelled.")
 
     if action == "confirm_publish":
-        if media not in MEDIA_OUTLETS:
+        if not validate_media_slug(media, _VALID_MEDIA_SLUGS):
             return _reply(chat_id, f"Unknown media: {media}")
         _queue_command(media, "publish", user_id)
         return _reply(chat_id, f"✅ Publish confirmed and queued for {MEDIA_OUTLETS[media].name}.")
 
     elif action == "confirm_skip":
-        if media not in MEDIA_OUTLETS:
+        if not validate_media_slug(media, _VALID_MEDIA_SLUGS):
             return _reply(chat_id, f"Unknown media: {media}")
-        _queue_command(media, "skip", user_id, {"slug": param})
-        return _reply(chat_id, f"✅ Skipping '{param}' in {MEDIA_OUTLETS[media].name}.")
+        safe_slug = validate_slug(param)
+        if not safe_slug:
+            return _reply(chat_id, "⚠️ Invalid article slug.")
+        _queue_command(media, "skip", user_id, {"slug": safe_slug})
+        return _reply(chat_id, f"✅ Skipping '{safe_slug}' in {MEDIA_OUTLETS[media].name}.")
 
     return None

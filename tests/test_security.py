@@ -151,6 +151,64 @@ class TestRateLimiting:
         assert not check_rate_limit(user_id)
 
 
+class TestInputValidation:
+    """Test input validation module."""
+
+    def test_valid_slug(self):
+        from app.security.validation import validate_slug
+        assert validate_slug("my-article-slug") == "my-article-slug"
+        assert validate_slug("article_2026") == "article_2026"
+
+    def test_slug_path_traversal(self):
+        from app.security.validation import validate_slug
+        assert validate_slug("../../../etc/passwd") is None
+        assert validate_slug("..") is None
+        assert validate_slug("/etc/shadow") is None
+
+    def test_slug_null_bytes(self):
+        from app.security.validation import validate_slug
+        assert validate_slug("article\x00evil") is None
+
+    def test_slug_too_long(self):
+        from app.security.validation import validate_slug
+        assert validate_slug("a" * 81) is None
+        assert validate_slug("a" * 80) == "a" * 80
+
+    def test_slug_special_chars(self):
+        from app.security.validation import validate_slug
+        assert validate_slug("article;rm -rf") is None
+        assert validate_slug("article$(cmd)") is None
+
+    def test_valid_callback_data(self):
+        from app.security.validation import validate_callback_data
+        assert validate_callback_data("confirm_publish:pashtelka") == ("confirm_publish", "pashtelka", "")
+        assert validate_callback_data("confirm_skip:longlife:my-slug") == ("confirm_skip", "longlife", "my-slug")
+        assert validate_callback_data("cancel") == ("cancel", "", "")
+
+    def test_invalid_callback_data(self):
+        from app.security.validation import validate_callback_data
+        assert validate_callback_data("") is None
+        assert validate_callback_data("a" * 100) is None  # too long
+        assert validate_callback_data("confirm_publish:../../etc") is None  # path traversal
+        assert validate_callback_data("EVIL_ACTION:media") is None  # uppercase
+
+    def test_callback_null_bytes(self):
+        from app.security.validation import validate_callback_data
+        assert validate_callback_data("confirm\x00:pashtelka") is None
+
+    def test_command_args_sanitized(self):
+        from app.security.validation import validate_command_args
+        args = validate_command_args(["normal", "has\x00null", "a" * 500])
+        assert len(args) == 3
+        assert "\x00" not in args[1]
+        assert len(args[2]) <= 200
+
+    def test_command_args_limit(self):
+        from app.security.validation import validate_command_args
+        args = validate_command_args(["a"] * 20, max_args=5)
+        assert len(args) == 5
+
+
 class TestBotHandlers:
     """Test bot handler security."""
 
