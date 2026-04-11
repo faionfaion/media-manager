@@ -3,5 +3,8 @@ __pycache__/
 .pytest_cache/
 logs/*.log
 logs/*.jsonl
+logs/.lock_*
+logs/.last_scheduled
+logs/.briefing_sent
 queue/done/
 .env
