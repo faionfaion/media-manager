@@ -83,6 +83,19 @@ MEDIA_OUTLETS: dict[str, MediaConfig] = {
         cron_publish="5 8,11,14,17 * * *",
         cron_digest="5 19 * * *",
     ),
+    "ender": MediaConfig(
+        name="Ender",
+        slug="ender",
+        project_dir=PROJECTS_DIR / "ender-faion-net",
+        tg_bot_token="8585090528:AAHWmjiT9TIlmdtz0x8Q_YpUCnP3APEx7i8",
+        tg_channel_id="",  # set after channel creation
+        tg_channel_username="ender_faion_ua",
+        site_url="https://ender.faion.net",
+        lang=["ua", "en"],
+        cron_generate="0 7 * * *",
+        cron_publish="5 9,11,14,17 * * *",
+        cron_digest="5 19 * * *",
+    ),
 }
 
 # API settings

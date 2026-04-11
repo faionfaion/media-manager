@@ -93,6 +93,14 @@ OUTLET_META = {
         "gradient": "linear-gradient(135deg, #1b5e20 0%, #2e7d32 50%, #43a047 100%)",
         "features": ["Evidence levels", "Comic illustrations", "Medical disclaimers", "8 health categories"],
     },
+    "ender": {
+        "emoji": "&#127918;",
+        "tagline": "Roblox news, guides and lifehacks for kids",
+        "description": "Daily Roblox content by EnderFaion and her dad FaionEnder. Game reviews, building guides, obby tips, dev tutorials, trends and records.",
+        "color": "#ab47bc",
+        "gradient": "linear-gradient(135deg, #4a148c 0%, #7b1fa2 50%, #9c27b0 100%)",
+        "features": ["Bilingual UA+EN", "Roblox characters", "Kid-friendly", "5 articles daily"],
+    },
 }
 
 

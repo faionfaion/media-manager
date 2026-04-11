@@ -47,37 +47,29 @@ TOOLS_FIX = ["Read", "Edit", "Bash", "Glob", "Grep"]  # can modify
 TOOLS_IMPROVE = ["Read", "Edit", "Bash", "Glob", "Grep", "WebSearch"]
 
 # System prompt with full knowledge of all pipelines
-_SYSTEM_PROMPT = """You are the Media Manager agent for Faion Network media pipelines.
-You manage 3 media outlets:
+def _build_system_prompt() -> str:
+    """Build system prompt dynamically from MEDIA_OUTLETS config."""
+    manager_dir = Path(__file__).resolve().parent.parent.parent
+    outlet_sections = []
+    for slug, cfg in MEDIA_OUTLETS.items():
+        lang = cfg.lang if isinstance(cfg.lang, str) else ", ".join(cfg.lang)
+        outlet_sections.append(
+            f"### {cfg.name} ({slug})\n"
+            f"- Dir: {cfg.project_dir}\n"
+            f"- Site: {cfg.site_url}\n"
+            f"- TG: @{cfg.tg_channel_username}\n"
+            f"- Lang: {lang}\n"
+            f"- Schedule: gen {cfg.cron_generate}, pub {cfg.cron_publish or 'inline'}, digest {cfg.cron_digest}\n"
+            f"- Content: content/ (markdown)\n"
+            f"- State: state/ (plans, runs, logs, editor_notes.md)"
+        )
+
+    return f"""You are the Media Manager agent for Faion Network media pipelines.
+You manage {len(MEDIA_OUTLETS)} media outlets:
 
 ## Outlets
 
-### NeroMedia (neromedia)
-- Dir: {neromedia_dir}
-- Site: https://neromedia.faion.net
-- TG: @neromedia_uk (+7 language channels)
-- Pipeline: pipeline/ (15 stages, hourly generate 7-19 UTC)
-- Content: content/ (markdown, 8 languages)
-- State: state/ (plans, posted, runs, logs, teasers.json)
-- Topics: AI, coding tools, agents, MCP, startups
-
-### LongLife (longlife)
-- Dir: {longlife_dir}
-- Site: https://longlife.faion.net
-- TG: @long_life_media
-- Pipeline: pipeline/ (13 stages, generate at 7 UTC)
-- Content: content/ (markdown, Ukrainian)
-- State: state/ (plans, editor_notes.md, runs, logs)
-- Topics: health, fitness, nutrition, longevity, biohacking
-
-### Pashtelka (pashtelka)
-- Dir: {pashtelka_dir}
-- Site: https://pashtelka.faion.net
-- TG: @pashtelka_news
-- Pipeline: pipeline/ (11 stages, generate at 6 UTC)
-- Content: content/ (markdown, Ukrainian)
-- State: state/ (plans, editor_notes.md, tg_published/, runs, logs)
-- Topics: Portugal news for Ukrainian diaspora
+{chr(10).join(outlet_sections)}
 
 ## Media Manager
 - Dir: {manager_dir}
@@ -99,12 +91,10 @@ You manage 3 media outlets:
 - NEVER modify security modules (app/security/*)
 - When fixing: prefer minimal changes, explain what you changed
 - Always read files before editing them
-""".format(
-    neromedia_dir=MEDIA_OUTLETS["neromedia"].project_dir,
-    longlife_dir=MEDIA_OUTLETS["longlife"].project_dir,
-    pashtelka_dir=MEDIA_OUTLETS["pashtelka"].project_dir,
-    manager_dir=Path(__file__).resolve().parent.parent.parent,
-)
+"""
+
+
+_SYSTEM_PROMPT = _build_system_prompt()
 
 
 def _backoff_delay(attempt: int) -> float:
