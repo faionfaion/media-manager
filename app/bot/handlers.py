@@ -138,6 +138,7 @@ def _dispatch_command(text: str, user_id: int, chat_id: int) -> dict | None:
         "/status": _cmd_status,
         "/plan": _cmd_plan,
         "/generate": _cmd_generate,
+        "/digest": _cmd_digest,
         "/publish": _cmd_publish,
         "/skip": _cmd_skip,
         "/note": _cmd_note,
@@ -163,6 +164,7 @@ def _cmd_help(args: list, user_id: int, chat_id: int) -> dict:
         "/status [media] — pipeline & channel status\n"
         "/plan [media] — today's editorial plan\n"
         "/generate <media> — trigger full content generation\n"
+        "/digest <media> — compile evening digest\n"
         "/publish <media> — trigger immediate TG publish\n"
         "/skip <media> <slug> — skip an article\n"
         "/schedule [media] — show cron schedules\n"
@@ -287,6 +289,19 @@ def _cmd_generate(args: list, user_id: int, chat_id: int) -> dict:
             {"text": "❌ Cancel", "callback_data": "cancel"},
         ],
     )
+
+
+def _cmd_digest(args: list, user_id: int, chat_id: int) -> dict:
+    """Trigger evening digest compilation."""
+    if not args:
+        return _reply(chat_id, "Usage: /digest <media>\nExample: /digest pashtelka")
+
+    target = args[0]
+    if target not in MEDIA_OUTLETS:
+        return _reply(chat_id, f"Unknown media: {target}")
+
+    _queue_command(target, "digest", user_id)
+    return _reply(chat_id, f"📋 Digest queued for {MEDIA_OUTLETS[target].name}.")
 
 
 def _cmd_publish(args: list, user_id: int, chat_id: int) -> dict:
