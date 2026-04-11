@@ -1,0 +1,15 @@
+[Unit]
+Description=Faion Media Manager Bot (polling mode)
+After=network.target
+
+[Service]
+Type=simple
+User=nero
+WorkingDirectory=/home/nero/workspace/projects/media-manager-faion-net
+ExecStart=/usr/bin/python3 main.py poll
+Restart=always
+RestartSec=10
+Environment=PYTHONPATH=/home/nero/workspace/projects/media-manager-faion-net
+
+[Install]
+WantedBy=multi-user.target

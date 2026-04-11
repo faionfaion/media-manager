@@ -1,3 +1,21 @@
 2026-04-11 09:07:33,171 INFO app.security.auth: Loaded 1 management chats
 2026-04-11 09:07:33,312 INFO httpx: HTTP Request: POST https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/deleteWebhook "HTTP/1.1 200 OK"
 2026-04-11 09:07:33,313 INFO __main__: Starting polling mode...
+2026-04-11 09:08:39,311 INFO app.security.auth: Loaded 1 management chats
+2026-04-11 09:08:39,434 INFO httpx: HTTP Request: POST https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/deleteWebhook "HTTP/1.1 200 OK"
+2026-04-11 09:08:39,435 INFO __main__: Starting polling mode...
+2026-04-11 09:09:09,512 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:09:39,617 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:10:09,717 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:10:39,814 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:11:09,904 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 200 OK"
+2026-04-11 09:11:32,537 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 409 Conflict"
+2026-04-11 09:11:35,638 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 409 Conflict"
+2026-04-11 09:11:35,736 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 409 Conflict"
+2026-04-11 09:11:38,829 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 409 Conflict"
+2026-04-11 09:11:38,928 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 409 Conflict"
+2026-04-11 09:11:42,022 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 409 Conflict"
+2026-04-11 09:11:42,124 INFO httpx: HTTP Request: GET https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/getUpdates?offset=0&timeout=30 "HTTP/1.1 409 Conflict"
+2026-04-11 09:12:29,719 INFO app.security.auth: Loaded 1 management chats
+2026-04-11 09:12:29,836 INFO httpx: HTTP Request: POST https://api.telegram.org/bot8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA/deleteWebhook "HTTP/1.1 200 OK"
+2026-04-11 09:12:29,837 INFO __main__: Starting polling mode...
