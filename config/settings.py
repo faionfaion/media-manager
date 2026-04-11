@@ -53,9 +53,9 @@ MEDIA_OUTLETS: dict[str, MediaConfig] = {
         site_url="https://neromedia.faion.net",
         lang=["ua", "en", "pt", "es"],
         pipeline_modes=["generate", "digest"],
-        cron_generate="7 * * * *",  # hourly
+        cron_generate="0 7-19 * * *",  # hourly 7am-7pm UTC
         cron_publish="",  # inline with generate
-        cron_digest="5 20 * * *",
+        cron_digest="0 20 * * *",
     ),
     "longlife": MediaConfig(
         name="LongLife",

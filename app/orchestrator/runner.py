@@ -141,30 +141,70 @@ def _notify_managers(text: str) -> None:
             logger.error("Failed to notify chat %d: %s", chat_id, e)
 
 
+# Track last scheduled run to prevent double-fires within the same minute
+_LAST_RUN_FILE = Path(__file__).resolve().parent.parent.parent / "logs" / ".last_scheduled"
+
+
+def _already_ran(slug: str, mode: str, hour: int, minute: int) -> bool:
+    """Check if this exact schedule slot already ran (dedup within minute)."""
+    key = f"{slug}:{mode}:{hour:02d}:{minute:02d}"
+    if _LAST_RUN_FILE.exists():
+        content = _LAST_RUN_FILE.read_text(encoding="utf-8").strip()
+        return key in content.split("\n")
+    return False
+
+
+def _mark_ran(slug: str, mode: str, hour: int, minute: int) -> None:
+    """Mark a schedule slot as executed."""
+    key = f"{slug}:{mode}:{hour:02d}:{minute:02d}"
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Reset file daily
+    existing = ""
+    if _LAST_RUN_FILE.exists():
+        raw = _LAST_RUN_FILE.read_text(encoding="utf-8")
+        if raw.startswith(today):
+            existing = raw
+    if not existing.startswith(today):
+        existing = today + "\n"
+
+    _LAST_RUN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _LAST_RUN_FILE.write_text(existing.rstrip() + "\n" + key + "\n", encoding="utf-8")
+
+
 def run_scheduled() -> None:
     """Check and run scheduled pipeline tasks based on cron configs.
 
-    Called periodically by the main loop or systemd timer.
+    Called every minute by cron. Uses dedup file to prevent double-fires.
     """
     now = datetime.now(timezone.utc)
-    current_hour = now.hour
-    current_minute = now.minute
+    h, m = now.hour, now.minute
 
     for slug, cfg in MEDIA_OUTLETS.items():
         # Check generate schedule
-        if cfg.cron_generate and _cron_matches(cfg.cron_generate, current_hour, current_minute):
-            logger.info("Scheduled generate for %s", slug)
-            _run_pipeline(cfg.project_dir, "generate", slug)
+        if cfg.cron_generate and _cron_matches(cfg.cron_generate, h, m):
+            if not _already_ran(slug, "generate", h, m):
+                logger.info("Scheduled generate for %s at %02d:%02d", slug, h, m)
+                _mark_ran(slug, "generate", h, m)
+                success = _run_pipeline(cfg.project_dir, "generate", slug)
+                _notify_managers(
+                    f"{'✅' if success else '❌'} <b>{cfg.name}</b>: scheduled generate "
+                    f"{'completed' if success else 'failed'}"
+                )
 
         # Check publish schedule
-        if cfg.cron_publish and _cron_matches(cfg.cron_publish, current_hour, current_minute):
-            logger.info("Scheduled publish for %s", slug)
-            _run_pipeline(cfg.project_dir, "publish", slug)
+        if cfg.cron_publish and _cron_matches(cfg.cron_publish, h, m):
+            if not _already_ran(slug, "publish", h, m):
+                logger.info("Scheduled publish for %s at %02d:%02d", slug, h, m)
+                _mark_ran(slug, "publish", h, m)
+                _run_pipeline(cfg.project_dir, "publish", slug)
 
         # Check digest schedule
-        if cfg.cron_digest and _cron_matches(cfg.cron_digest, current_hour, current_minute):
-            logger.info("Scheduled digest for %s", slug)
-            _run_pipeline(cfg.project_dir, "digest", slug)
+        if cfg.cron_digest and _cron_matches(cfg.cron_digest, h, m):
+            if not _already_ran(slug, "digest", h, m):
+                logger.info("Scheduled digest for %s at %02d:%02d", slug, h, m)
+                _mark_ran(slug, "digest", h, m)
+                _run_pipeline(cfg.project_dir, "digest", slug)
 
 
 def _cron_matches(cron_expr: str, hour: int, minute: int) -> bool:
