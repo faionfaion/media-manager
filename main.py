@@ -9,7 +9,7 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
+import json
 import logging
 import sys
 from pathlib import Path
@@ -100,12 +100,15 @@ def cmd_poll():
 
                 if response and response.get("method") == "sendMessage":
                     send_url = f"https://api.telegram.org/bot{MANAGER_BOT_TOKEN}/sendMessage"
-                    httpx.post(send_url, json={
+                    payload = {
                         "chat_id": response["chat_id"],
                         "text": response["text"],
                         "parse_mode": response.get("parse_mode", "HTML"),
                         "disable_web_page_preview": True,
-                    })
+                    }
+                    if "reply_markup" in response:
+                        payload["reply_markup"] = json.dumps(response["reply_markup"])
+                    httpx.post(send_url, json=payload)
 
         except KeyboardInterrupt:
             logger.info("Polling stopped")

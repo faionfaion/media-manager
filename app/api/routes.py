@@ -69,6 +69,9 @@ async def _send_tg_response(response: dict) -> None:
         "parse_mode": response.get("parse_mode", "HTML"),
         "disable_web_page_preview": response.get("disable_web_page_preview", True),
     }
+    if "reply_markup" in response:
+        import json as _json
+        payload["reply_markup"] = _json.dumps(response["reply_markup"])
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(url, json=payload)

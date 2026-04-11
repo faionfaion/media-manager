@@ -52,6 +52,12 @@ def handle_update(update: dict) -> dict | None:
 
     # -- Security checks --
 
+    # 0. Block forwarded messages — could bypass auth context
+    if message.get("forward_from") or message.get("forward_from_chat") or message.get("forward_origin"):
+        _audit("forwarded_blocked", user_id, chat_id, text)
+        logger.warning("Blocked forwarded message from user %d", user_id)
+        return _reply(chat_id, "⚠️ Forwarded messages are not accepted. Please type your command directly.")
+
     # 1. Auth check
     if not is_authorized(user_id):
         logger.warning("Unauthorized user %d attempted command: %s", user_id, text[:50])
@@ -253,7 +259,7 @@ def _cmd_plan(args: list, user_id: int, chat_id: int) -> dict:
 
 
 def _cmd_publish(args: list, user_id: int, chat_id: int) -> dict:
-    """Trigger immediate publish for a media outlet."""
+    """Trigger immediate publish — requires confirmation via inline button."""
     if not args:
         return _reply(chat_id, "Usage: /publish <media>\nExample: /publish pashtelka")
 
@@ -261,13 +267,20 @@ def _cmd_publish(args: list, user_id: int, chat_id: int) -> dict:
     if target not in MEDIA_OUTLETS:
         return _reply(chat_id, f"Unknown media: {target}")
 
-    # Queue a publish command for the orchestrator
-    _queue_command(target, "publish", user_id)
-    return _reply(chat_id, f"⚡ Publish queued for {MEDIA_OUTLETS[target].name}. Processing...")
+    # Ask for confirmation with inline buttons
+    return _reply_with_buttons(
+        chat_id,
+        f"⚡ Publish <b>{MEDIA_OUTLETS[target].name}</b> now?\n"
+        f"This will trigger the pipeline immediately.",
+        [
+            {"text": "✅ Confirm publish", "callback_data": f"confirm_publish:{target}"},
+            {"text": "❌ Cancel", "callback_data": "cancel"},
+        ],
+    )
 
 
 def _cmd_skip(args: list, user_id: int, chat_id: int) -> dict:
-    """Skip an article from the queue."""
+    """Skip an article — requires confirmation via inline button."""
     if len(args) < 2:
         return _reply(chat_id, "Usage: /skip <media> <slug>")
 
@@ -275,8 +288,14 @@ def _cmd_skip(args: list, user_id: int, chat_id: int) -> dict:
     if target not in MEDIA_OUTLETS:
         return _reply(chat_id, f"Unknown media: {target}")
 
-    _queue_command(target, "skip", user_id, {"slug": slug})
-    return _reply(chat_id, f"⏭ Skipping '{slug}' in {MEDIA_OUTLETS[target].name}.")
+    return _reply_with_buttons(
+        chat_id,
+        f"⏭ Skip <b>{slug}</b> in {MEDIA_OUTLETS[target].name}?",
+        [
+            {"text": "✅ Confirm skip", "callback_data": f"confirm_skip:{target}:{slug}"},
+            {"text": "❌ Cancel", "callback_data": "cancel"},
+        ],
+    )
 
 
 def _cmd_note(args: list, user_id: int, chat_id: int) -> dict:
@@ -381,10 +400,12 @@ def _cmd_security(args: list, user_id: int, chat_id: int) -> dict:
         "<b>Guardrails active:</b>\n"
         "✅ User auth (TG user ID whitelist)\n"
         "✅ Chat registration required\n"
+        "✅ Forwarded message blocking\n"
         "✅ Prompt injection detection (5 categories)\n"
         "✅ Rate limiting (10 cmd/min)\n"
         "✅ Input sanitization\n"
         "✅ Safe prompt envelope wrapping\n"
+        "✅ Destructive command confirmation (inline buttons)\n"
         "✅ Audit logging"
     ))
 
@@ -417,6 +438,20 @@ def _reply(chat_id: int, text: str) -> dict:
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
+    }
+
+
+def _reply_with_buttons(chat_id: int, text: str, buttons: list[dict]) -> dict:
+    """Build a sendMessage with inline keyboard buttons."""
+    return {
+        "method": "sendMessage",
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+        "reply_markup": {
+            "inline_keyboard": [[btn] for btn in buttons],
+        },
     }
 
 
@@ -483,15 +518,24 @@ def _audit(action: str, user_id: int, chat_id: int, text: str, detail: str = "")
 
 
 def _handle_callback(callback: dict) -> dict | None:
-    """Handle inline button callbacks."""
+    """Handle inline button callbacks (confirmations, cancellations)."""
     user = callback.get("from", {})
     user_id = user.get("id", 0)
 
     if not is_authorized(user_id):
         return None
 
+    if not check_rate_limit(user_id):
+        return None
+
     data = callback.get("data", "")
     chat_id = callback.get("message", {}).get("chat", {}).get("id", 0)
+
+    _audit("callback", user_id, chat_id, data)
+
+    # Cancel button
+    if data == "cancel":
+        return _reply(chat_id, "❌ Cancelled.")
 
     # Parse callback data: "action:media:param"
     parts = data.split(":", 2)
@@ -501,11 +545,16 @@ def _handle_callback(callback: dict) -> dict | None:
     action, media = parts[0], parts[1]
     param = parts[2] if len(parts) > 2 else ""
 
-    if action == "publish":
+    if action == "confirm_publish":
+        if media not in MEDIA_OUTLETS:
+            return _reply(chat_id, f"Unknown media: {media}")
         _queue_command(media, "publish", user_id)
-        return _reply(chat_id, f"⚡ Publish queued for {media}.")
-    elif action == "skip":
+        return _reply(chat_id, f"✅ Publish confirmed and queued for {MEDIA_OUTLETS[media].name}.")
+
+    elif action == "confirm_skip":
+        if media not in MEDIA_OUTLETS:
+            return _reply(chat_id, f"Unknown media: {media}")
         _queue_command(media, "skip", user_id, {"slug": param})
-        return _reply(chat_id, f"⏭ Skipping {param} in {media}.")
+        return _reply(chat_id, f"✅ Skipping '{param}' in {MEDIA_OUTLETS[media].name}.")
 
     return None
