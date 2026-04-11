@@ -73,6 +73,69 @@ _ENCODING_EVASION = [
     r"[\u00a0]{3,}",  # 3+ NBSP in a row (normal use is 1)
 ]
 
+# Ukrainian/Russian injection phrases (multi-language evasion)
+_MULTILANG_INJECTION = [
+    # "Ignore previous instructions" in Ukrainian
+    r"(?i)ігнор(уй|увати)\s+(попередн|всі|усі)\s+(інструкці|правил|вказівк)",
+    # "You are now" / "from now on" in Ukrainian
+    r"(?i)відтепер\s+(ти|ви)\s+",
+    r"(?i)тепер\s+ти\s+(є|будеш)\s+",
+    # "Forget everything" in Ukrainian
+    r"(?i)забудь\s+(все|усе|все що)",
+    # "Show system prompt" in Ukrainian
+    r"(?i)(покажи|виведи|надрукуй)\s+(системн|прихован|внутрішн)",
+    # "Ignore previous instructions" in Russian
+    r"(?i)игнорируй\s+(все\s+)?(предыдущ|прошл).*?(инструкци|правил|указани)",
+    r"(?i)игнорируй\s+все\s+(предыдущие\s+)?инструкци",
+    r"(?i)забудь\s+(всё|все)\s+(что\s+)?(знаешь|тебе\s+говорили)",
+    # "You are now" in Russian
+    r"(?i)теперь\s+ты\s+",
+    # "Show system prompt" in Russian
+    r"(?i)(покажи|выведи|напечатай)\s+(системн|скрыт|внутренн)",
+]
+
+# Polite/indirect injection (semantic rephrasing)
+_INDIRECT_INJECTION = [
+    # "As a special exception"
+    r"(?i)as\s+a\s+special\s+(exception|case|override)",
+    r"(?i)just\s+(this|for)\s+once?\s*,?\s*(ignore|skip|bypass)",
+    # "Please kindly override/disregard"
+    r"(?i)please\s+(kindly\s+)?(override|disregard|bypass|skip)\s+(the\s+)?(rules?|guidelines?|restrictions?|safety|filters?)",
+    r"(?i)(kindly|please)\s+.{0,20}(override|bypass|disregard)\s+.{0,20}(guideline|rule|restriction|safety|filter)",
+    # "For testing purposes"
+    r"(?i)for\s+(testing|debugging|development)\s+purposes?\s*,?\s*(ignore|skip|bypass|disable)",
+    # "The developer said to"
+    r"(?i)(the\s+)?(developer|admin|owner|creator)\s+(said|told|asked|wants)\s+(you\s+)?to",
+    # "In maintenance mode"
+    r"(?i)(enter|switch\s+to|enable)\s+(maintenance|debug|admin|test)\s+mode",
+    # Ukrainian indirect
+    r"(?i)(як\s+виняток|для\s+тестування|розробник\s+сказав)",
+]
+
+# Unicode homoglyph detection — Cyrillic chars that look like Latin
+# This catches text that mixes scripts to evade ASCII-only pattern matching
+def _has_mixed_scripts(text: str) -> bool:
+    """Detect mixed Cyrillic/Latin in a single word (homoglyph attack indicator).
+
+    Normal Ukrainian text has Cyrillic words and English words separately.
+    An attack mixes them in the same word: "іgnore" (Cyrillic і + Latin gnore).
+    """
+    words = text.split()
+    for word in words:
+        if len(word) < 4:
+            continue
+        has_latin = False
+        has_cyrillic = False
+        for ch in word:
+            cp = ord(ch)
+            if 0x0041 <= cp <= 0x007A:  # Basic Latin letters
+                has_latin = True
+            elif 0x0400 <= cp <= 0x04FF:  # Cyrillic
+                has_cyrillic = True
+        if has_latin and has_cyrillic:
+            return True
+    return False
+
 
 @dataclass
 class InjectionResult:
@@ -107,6 +170,8 @@ def detect_prompt_injection(text: str) -> InjectionResult:
         "exfiltration": _EXFILTRATION,
         "code_execution": _CODE_EXECUTION,
         "encoding_evasion": _ENCODING_EVASION,
+        "multilang_injection": _MULTILANG_INJECTION,
+        "indirect_injection": _INDIRECT_INJECTION,
     }
 
     for category, patterns in categories.items():
@@ -114,9 +179,15 @@ def detect_prompt_injection(text: str) -> InjectionResult:
             if re.search(pattern, text):
                 matches.append(f"{category}: {pattern}")
 
+    # Unicode homoglyph detection (mixed Cyrillic/Latin in same word)
+    if _has_mixed_scripts(text):
+        matches.append("homoglyph: mixed Cyrillic/Latin in single word")
+
     # Risk scoring — severity depends on category, not just count
-    high_risk_categories = {"instruction_override", "code_execution", "exfiltration"}
+    high_risk_categories = {"instruction_override", "code_execution", "exfiltration", "multilang_injection"}
+    medium_risk_categories = {"indirect_injection", "homoglyph"}
     has_high_risk = any(m.split(":")[0] in high_risk_categories for m in matches)
+    has_medium_risk = any(m.split(":")[0] in medium_risk_categories for m in matches)
 
     if not matches:
         risk = "safe"
@@ -203,7 +274,10 @@ def _build_explanation(matches: list[str], risk: str) -> str:
         "exfiltration": "attempts to extract system prompts or secrets",
         "code_execution": "attempts to execute code or commands",
         "encoding_evasion": "uses encoding tricks to bypass detection",
+        "multilang_injection": "injection in Ukrainian/Russian",
+        "indirect_injection": "indirect/polite injection attempt",
+        "homoglyph": "mixed-script homoglyph attack (Cyrillic/Latin)",
     }
 
-    parts = [explanations.get(c, c) for c in categories_hit]
+    parts = [explanations.get(c, c) for c in categories_hit if c in explanations]
     return f"Risk: {risk}. Detected: {', '.join(parts)}. ({len(matches)} pattern matches)"
