@@ -53,10 +53,10 @@ MEDIA_OUTLETS: dict[str, MediaConfig] = {
         site_url="https://neromedia.faion.net",
         lang=["ua", "en", "pt", "es"],
         pipeline_modes=["generate", "publish", "digest"],
-        # Generate hourly at :17 from 00:17 to 12:17 UTC — 13 articles to site (no TG)
-        cron_generate="17 0-12 * * *",
-        # Publish hourly at :47 from 07:47 to 19:47 UTC — 13 TG slots (picks oldest unpublished)
-        cron_publish="47 7-19 * * *",
+        # Generate every 2h at :17 (00:17, 02:17, ..., 22:17 UTC) — 12 articles spread across 24h
+        cron_generate="17 */2 * * *",
+        # Publish hourly at :47 from 07:47 to 18:47 UTC — 12 TG slots (picks oldest unpublished)
+        cron_publish="47 7-18 * * *",
         cron_digest="13 20 * * *",
     ),
     "longlife": MediaConfig(
