@@ -47,54 +47,56 @@ MEDIA_OUTLETS: dict[str, MediaConfig] = {
         name="NeroMedia",
         slug="neromedia",
         project_dir=PROJECTS_DIR / "neromedia-faion-net",
-        tg_bot_token="8585090528:AAHWmjiT9TIlmdtz0x8Q_YpUCnP3APEx7i8",
+        tg_bot_token="8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA",
         tg_channel_id="-1002599675498",
         tg_channel_username="neromedia_uk",
         site_url="https://neromedia.faion.net",
         lang=["ua", "en", "pt", "es"],
-        pipeline_modes=["generate", "digest"],
-        cron_generate="0 7-19 * * *",  # hourly 7am-7pm UTC
-        cron_publish="",  # inline with generate
-        cron_digest="0 20 * * *",
+        pipeline_modes=["generate", "publish", "digest"],
+        # Generate hourly at :17 from 00:17 to 12:17 UTC — 13 articles to site (no TG)
+        cron_generate="17 0-12 * * *",
+        # Publish hourly at :47 from 07:47 to 19:47 UTC — 13 TG slots (picks oldest unpublished)
+        cron_publish="47 7-19 * * *",
+        cron_digest="13 20 * * *",
     ),
     "longlife": MediaConfig(
         name="LongLife",
         slug="longlife",
         project_dir=PROJECTS_DIR / "longlife-faion-net",
-        tg_bot_token="8585090528:AAHWmjiT9TIlmdtz0x8Q_YpUCnP3APEx7i8",
+        tg_bot_token="8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA",
         tg_channel_id="-1003845412300",
         tg_channel_username="long_life_media",
         site_url="https://longlife.faion.net",
         lang="ua",
-        cron_generate="0 7 * * *",
+        cron_generate="3 3 * * *",  # 03:03 UTC (spread across night)
         cron_publish="5 9,12,15,18 * * *",
-        cron_digest="5 20 * * *",
+        cron_digest="43 20 * * *",
     ),
     "pashtelka": MediaConfig(
         name="Pashtelka",
         slug="pashtelka",
         project_dir=PROJECTS_DIR / "pashtelka-faion-net",
-        tg_bot_token="8585090528:AAHWmjiT9TIlmdtz0x8Q_YpUCnP3APEx7i8",
+        tg_bot_token="8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA",
         tg_channel_id="-1003726391778",
         tg_channel_username="pashtelka_news",
         site_url="https://pastelka.news",
         lang="ua",
-        cron_generate="0 6 * * *",
+        cron_generate="17 1 * * *",  # 01:17 UTC (spread across night)
         cron_publish="5 8,11,14,17 * * *",
-        cron_digest="5 19 * * *",
+        cron_digest="7 19 * * *",
     ),
     "ender": MediaConfig(
         name="Ender",
         slug="ender",
         project_dir=PROJECTS_DIR / "ender-faion-net",
-        tg_bot_token="8585090528:AAHWmjiT9TIlmdtz0x8Q_YpUCnP3APEx7i8",
-        tg_channel_id="",  # set after channel creation
+        tg_bot_token="8578996384:AAFhkTHh_D40VdCc7em5U9taM5a-o00JzaA",
+        tg_channel_id="-1003353271043",
         tg_channel_username="ender_faion_ua",
         site_url="https://ender.faion.net",
         lang=["ua", "en"],
-        cron_generate="0 7 * * *",
+        cron_generate="47 4 * * *",  # 04:47 UTC (spread across night)
         cron_publish="5 9,11,14,17 * * *",
-        cron_digest="5 19 * * *",
+        cron_digest="23 19 * * *",
     ),
 }
 
