@@ -1,7 +1,8 @@
-"""Pipeline health monitor — detects failures and missed schedules.
+"""Pipeline health monitor with auto-healing.
 
-Called periodically by the cron orchestrator. Sends alerts to management chats.
-Also detects completion/failure of background pipeline processes.
+Called every 20 minutes by the cron orchestrator.
+Detects issues → launches healing agent (Claude SDK) → reports fixes to TG.
+Only sends TG messages when something was FIXED, not status spam.
 """
 
 from __future__ import annotations
@@ -16,138 +17,337 @@ from config.settings import MANAGER_BOT_TOKEN, MEDIA_OUTLETS
 
 logger = logging.getLogger(__name__)
 
-# Track last alert times to avoid spam (in-memory, resets on restart)
+# Cooldown per alert key (in-memory, resets on restart)
 _last_alerts: dict[str, datetime] = {}
-ALERT_COOLDOWN = timedelta(hours=1)
-
+HEAL_COOLDOWN = timedelta(hours=2)  # don't re-heal same issue within 2h
 
 _LOCK_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 
 
-def check_background_processes() -> list[str]:
-    """Detect completed/failed background pipeline processes."""
-    alerts: list[str] = []
+# ---------------------------------------------------------------------------
+# Issue detection
+# ---------------------------------------------------------------------------
 
+def detect_issues() -> list[dict]:
+    """Scan all pipelines for actionable issues. Returns list of issue dicts."""
+    issues: list[dict] = []
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+
+    # Check background process completions first
     for lock_file in _LOCK_DIR.glob(".lock_*"):
-        # Parse: .lock_{media}_{mode}
         parts = lock_file.stem.lstrip(".lock_").split("_", 1)
         if len(parts) < 2:
             continue
         media_slug, mode = parts[0], parts[1]
-
         try:
             pid = int(lock_file.read_text().strip())
         except (ValueError, OSError):
             lock_file.unlink(missing_ok=True)
             continue
-
-        # Check if process is still running
         try:
             os.kill(pid, 0)
-            # Still running — no alert
         except OSError:
-            # Process finished — check exit status via /proc or just report
             lock_file.unlink(missing_ok=True)
-            cfg = MEDIA_OUTLETS.get(media_slug)
-            name = cfg.name if cfg else media_slug
-
-            alert_key = f"bg_done_{media_slug}_{mode}_{pid}"
-            if _should_alert(alert_key):
-                alerts.append(
-                    f"✅ <b>{name}</b>: background {mode} completed (pid {pid})"
-                )
-
-    return alerts
-
-
-def check_pipeline_health() -> list[str]:
-    """Check all pipelines for issues. Returns list of alert messages."""
-    # First check background processes
-    alerts: list[str] = check_background_processes()
-
-    now = datetime.now(timezone.utc)
-    today = now.strftime("%Y-%m-%d")
+            logger.info("Background %s/%s (pid %d) completed", media_slug, mode, pid)
 
     for slug, cfg in MEDIA_OUTLETS.items():
         state_dir = cfg.project_dir / "state"
-        content_dir = cfg.project_dir / "content"
-
-        # 1. Check if generate ran today (by looking for today's content)
-        from app.utils import count_articles_today
-        today_articles = count_articles_today(content_dir, today)
-
-        # Alert if no articles by noon UTC
-        if now.hour >= 12 and today_articles == 0:
-            alert_key = f"{slug}_no_articles_{today}"
-            if _should_alert(alert_key):
-                alerts.append(
-                    f"⚠️ <b>{cfg.name}</b>: no articles generated today ({today}). "
-                    f"Expected generate to run at {cfg.cron_generate}."
-                )
-
-        # 2. Check last pipeline run age
         runs_dir = state_dir / "runs"
-        if runs_dir.exists():
-            run_files = sorted(runs_dir.glob("*.json"), reverse=True)
-            if run_files:
-                last_run_name = run_files[0].stem
-                try:
-                    # Parse timestamp from filename: 2026-04-11_081224
-                    last_dt = datetime.strptime(last_run_name, "%Y-%m-%d_%H%M%S").replace(tzinfo=timezone.utc)
-                    age = now - last_dt
-                    if age > timedelta(hours=26):
-                        alert_key = f"{slug}_stale_run_{today}"
-                        if _should_alert(alert_key):
-                            alerts.append(
-                                f"⚠️ <b>{cfg.name}</b>: last pipeline run was {age.total_seconds()/3600:.0f}h ago "
-                                f"({last_run_name}). Pipeline may be stuck."
-                            )
-                except ValueError:
-                    pass
 
-        # 3. Check for error in last run
+        # --- Issue: stale lock file ---
+        for mode in ("generate", "publish", "digest"):
+            lock = Path(f"/tmp/{slug}-{mode}.lock")
+            if lock.exists():
+                try:
+                    pid = int(lock.read_text().strip())
+                    os.kill(pid, 0)
+                except (ValueError, OSError):
+                    issues.append({
+                        "slug": slug,
+                        "type": "stale_lock",
+                        "severity": "high",
+                        "detail": f"Stale lock /tmp/{slug}-{mode}.lock (pid dead)",
+                        "auto_fix": f"rm /tmp/{slug}-{mode}.lock",
+                    })
+
+        # --- Issue: last run failed ---
         if runs_dir.exists():
             run_files = sorted(runs_dir.glob("*.json"), reverse=True)
             if run_files:
                 try:
-                    run_data = json.loads(run_files[0].read_text(encoding="utf-8"))
-                    if run_data.get("status") == "error" or run_data.get("exit_code", 0) != 0:
-                        alert_key = f"{slug}_error_{run_files[0].stem}"
-                        if _should_alert(alert_key):
-                            error_msg = run_data.get("error", "unknown error")[:200]
-                            alerts.append(
-                                f"❌ <b>{cfg.name}</b>: last run failed.\n"
-                                f"<pre>{error_msg}</pre>"
-                            )
+                    rd = json.loads(run_files[0].read_text(encoding="utf-8"))
+                    status = rd.get("exit_status", rd.get("status", "ok"))
+                    if status == "error":
+                        error_msg = rd.get("error", "unknown")[:300]
+                        failed_stage = rd.get("failed_stage", "?")
+                        issues.append({
+                            "slug": slug,
+                            "type": "last_run_failed",
+                            "severity": "high",
+                            "detail": f"Last run failed at {failed_stage}: {error_msg}",
+                            "run_file": run_files[0].name,
+                        })
                 except (json.JSONDecodeError, OSError):
                     pass
 
-        # 4. Check pipeline log for recent errors
-        log_file = state_dir / "logs" / "pipeline.log"
-        if log_file.exists():
-            try:
-                lines = log_file.read_text(encoding="utf-8").splitlines()
-                recent_errors = [
-                    l for l in lines[-50:]
-                    if "ERROR" in l or "CRITICAL" in l or "Traceback" in l
-                ]
-                if len(recent_errors) >= 3:
-                    alert_key = f"{slug}_log_errors_{today}_{now.hour}"
-                    if _should_alert(alert_key):
-                        sample = recent_errors[-1][:150]
-                        alerts.append(
-                            f"🔴 <b>{cfg.name}</b>: {len(recent_errors)} errors in recent logs.\n"
-                            f"Last: <pre>{sample}</pre>"
-                        )
-            except OSError:
-                pass
+        # --- Issue: pipeline stale (no run in 26h) ---
+        if runs_dir.exists():
+            run_files = sorted(runs_dir.glob("*.json"), reverse=True)
+            if run_files:
+                try:
+                    last_dt = datetime.strptime(
+                        run_files[0].stem, "%Y-%m-%d_%H%M%S"
+                    ).replace(tzinfo=timezone.utc)
+                    age_h = (now - last_dt).total_seconds() / 3600
+                    if age_h > 26:
+                        issues.append({
+                            "slug": slug,
+                            "type": "stale_pipeline",
+                            "severity": "medium",
+                            "detail": f"Last run {age_h:.0f}h ago ({run_files[0].stem})",
+                        })
+                except ValueError:
+                    pass
 
-    return alerts
+        # --- Issue: no articles today (after noon, only if pipeline expected to run) ---
+        if now.hour >= 12 and cfg.cron_generate:
+            from app.utils import count_articles_today
+            content_dir = cfg.project_dir / "content"
+            today_articles = count_articles_today(content_dir, today)
+            if today_articles == 0:
+                # Don't flag if last run errored (already captured above)
+                already_flagged = any(
+                    i["slug"] == slug and i["type"] == "last_run_failed"
+                    for i in issues
+                )
+                if not already_flagged:
+                    issues.append({
+                        "slug": slug,
+                        "type": "no_articles_today",
+                        "severity": "medium",
+                        "detail": f"0 articles today, expected generate at {cfg.cron_generate}",
+                    })
+
+    return issues
 
 
-def send_alerts(alerts: list[str]) -> None:
-    """Send alert messages to all management chats."""
-    if not alerts:
+# ---------------------------------------------------------------------------
+# Auto-healing
+# ---------------------------------------------------------------------------
+
+def heal_issues(issues: list[dict]) -> list[str]:
+    """Attempt to auto-heal detected issues. Returns list of TG report messages."""
+    if not issues:
+        return []
+
+    reports: list[str] = []
+
+    # Group simple fixes (stale locks) — handle without agent
+    for issue in issues:
+        key = f"{issue['slug']}_{issue['type']}"
+        if not _should_heal(key):
+            continue
+
+        if issue["type"] == "stale_lock":
+            # Direct fix — remove stale lock
+            cmd = issue.get("auto_fix", "")
+            if cmd.startswith("rm "):
+                lock_path = Path(cmd[3:])
+                if lock_path.exists():
+                    lock_path.unlink()
+                    reports.append(
+                        f"🔧 <b>{_name(issue['slug'])}</b>: removed stale lock\n"
+                        f"<pre>{issue['detail']}</pre>"
+                    )
+                    logger.info("Auto-healed: removed %s", lock_path)
+
+    # Complex issues → healing agent
+    agent_issues = [
+        i for i in issues
+        if i["type"] in ("last_run_failed", "stale_pipeline", "no_articles_today")
+        and _should_heal(f"{i['slug']}_{i['type']}")
+    ]
+
+    if agent_issues:
+        report = _run_healing_agent(agent_issues)
+        if report:
+            reports.append(report)
+
+    return reports
+
+
+def _run_healing_agent(issues: list[dict]) -> str | None:
+    """Launch Claude Agent SDK to diagnose and fix pipeline issues."""
+    try:
+        from app.bot.agent import _run_with_retry, _async_agent, TOOLS_FIX
+
+        # Build issue summary for the agent
+        issue_lines = []
+        slugs = set()
+        for i in issues:
+            cfg = MEDIA_OUTLETS.get(i["slug"])
+            name = cfg.name if cfg else i["slug"]
+            issue_lines.append(f"- {name} ({i['slug']}): [{i['type']}] {i['detail']}")
+            slugs.add(i["slug"])
+
+        issues_text = "\n".join(issue_lines)
+
+        system_prompt = _build_healer_system_prompt()
+        prompt = (
+            f"You are the auto-healing agent for Faion media pipelines.\n\n"
+            f"## Detected issues\n\n{issues_text}\n\n"
+            f"## Instructions\n\n"
+            f"1. Investigate each issue: read logs, run reports, state files\n"
+            f"2. For each fixable issue, apply the fix:\n"
+            f"   - stale_lock: remove the lock file\n"
+            f"   - last_run_failed: check logs, fix config/state if possible, "
+            f"retry pipeline if error was transient\n"
+            f"   - stale_pipeline: check if cron is firing, check locks, "
+            f"check if orchestrator is reaching this outlet\n"
+            f"   - no_articles_today: check if generate ran, check state, "
+            f"retry generate if it didn't run\n"
+            f"3. Do NOT run full pipeline generate (too long). "
+            f"Only fix state, config, locks, or retry specific stages.\n"
+            f"4. After fixing, respond with ONLY this JSON:\n\n"
+            f"```json\n"
+            f'{{"healed": [{{"slug": "...", "issue": "...", "action": "...", "result": "fixed|skipped|failed"}}], '
+            f'"summary": "one sentence overall"}}\n'
+            f"```"
+        )
+
+        # Use first issue's slug for CWD
+        first_slug = list(slugs)[0]
+        cwd = str(MEDIA_OUTLETS[first_slug].project_dir) if first_slug in MEDIA_OUTLETS else "/tmp"
+
+        raw = _run_with_retry(
+            lambda: _async_agent(prompt, system_prompt, "opus", cwd, TOOLS_FIX),
+            "auto-heal",
+        )
+
+        return _format_heal_report(raw, issues)
+
+    except Exception as e:
+        logger.error("Healing agent failed: %s", e)
+        return f"❌ Healing agent error: {e}"
+
+
+def _format_heal_report(raw: str, issues: list[dict]) -> str | None:
+    """Parse agent response and format TG message."""
+    import re
+
+    # Try to extract JSON from response
+    match = re.search(r"\{[\s\S]*\}", raw)
+    if match:
+        try:
+            data = json.loads(match.group())
+            healed = data.get("healed", [])
+            summary = data.get("summary", "")
+
+            if not healed:
+                return None  # Nothing was done
+
+            lines = [f"🔧 <b>Auto-Heal Report</b> ({datetime.now(timezone.utc).strftime('%H:%M UTC')})\n"]
+
+            for h in healed:
+                icon = {"fixed": "✅", "skipped": "⏭", "failed": "❌"}.get(h.get("result", ""), "❓")
+                name = _name(h.get("slug", ""))
+                lines.append(f"{icon} <b>{name}</b>: {h.get('action', '?')}")
+
+            if summary:
+                lines.append(f"\n📋 {summary}")
+
+            return "\n".join(lines)
+
+        except json.JSONDecodeError:
+            pass
+
+    # Fallback: just show raw agent output (truncated)
+    if raw.strip():
+        truncated = raw[:1500] if len(raw) > 1500 else raw
+        return (
+            f"🔧 <b>Auto-Heal Report</b>\n\n"
+            f"<pre>{_escape_html(truncated)}</pre>"
+        )
+
+    return None
+
+
+def _build_healer_system_prompt() -> str:
+    """System prompt for healing agent — focused on fixing, not investigating."""
+    outlet_sections = []
+    for slug, cfg in MEDIA_OUTLETS.items():
+        outlet_sections.append(
+            f"- {cfg.name} ({slug}): dir={cfg.project_dir}, "
+            f"gen={cfg.cron_generate}, site={cfg.site_url}"
+        )
+
+    return (
+        "You are an auto-healing agent for Faion media pipelines.\n"
+        "Your job: fix issues quickly and report what you did.\n\n"
+        "Outlets:\n" + "\n".join(outlet_sections) + "\n\n"
+        "Key paths per outlet:\n"
+        "- state/logs/pipeline.log — pipeline log\n"
+        "- state/logs/cron.log — cron log\n"
+        "- state/runs/*.json — run reports (exit_status, error, failed_stage)\n"
+        "- state/editor_notes.md — editor notes\n"
+        "- pipeline/config.py — pipeline config\n\n"
+        "Lock files: /tmp/{slug}-{mode}.lock\n\n"
+        "Safety:\n"
+        "- DO remove stale locks (PID dead)\n"
+        "- DO fix state files (JSON, summaries)\n"
+        "- DO restart failed stages via: cd {dir} && python3 -m pipeline publish -v\n"
+        "- DO NOT run full generate (takes 30+ min)\n"
+        "- DO NOT modify security code\n"
+        "- DO NOT expose secrets\n"
+        "- Prefer minimal changes. Explain what you did."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main entry point (called by orchestrator)
+# ---------------------------------------------------------------------------
+
+def check_and_heal() -> None:
+    """Main entry: detect issues → heal → report to TG."""
+    issues = detect_issues()
+
+    if not issues:
+        logger.debug("Health check: all systems OK")
+        return
+
+    logger.info("Health check: %d issues detected", len(issues))
+    for i in issues:
+        logger.info("  [%s] %s: %s", i["severity"], i["slug"], i["detail"])
+
+    reports = heal_issues(issues)
+
+    if reports:
+        _send_reports(reports)
+
+
+# ---------------------------------------------------------------------------
+# Legacy compat: keep check_pipeline_health for other callers
+# ---------------------------------------------------------------------------
+
+def check_pipeline_health() -> list[str]:
+    """Legacy: returns alert strings. Now just wraps detect_issues."""
+    issues = detect_issues()
+    return [f"⚠️ <b>{_name(i['slug'])}</b>: {i['detail']}" for i in issues]
+
+
+def check_background_processes() -> list[str]:
+    """Legacy: detect completed background processes."""
+    return []  # Now handled in detect_issues()
+
+
+# ---------------------------------------------------------------------------
+# TG messaging
+# ---------------------------------------------------------------------------
+
+def _send_reports(reports: list[str]) -> None:
+    """Send heal reports to management chats."""
+    if not reports:
         return
 
     from app.security.auth import get_management_chats
@@ -155,13 +355,11 @@ def send_alerts(alerts: list[str]) -> None:
 
     chats = get_management_chats()
     if not chats:
-        logger.warning("No management chats registered — alerts not delivered")
+        logger.warning("No management chats — reports not delivered")
         return
 
     url = f"https://api.telegram.org/bot{MANAGER_BOT_TOKEN}/sendMessage"
-    combined = "\n\n".join(alerts)
-    header = f"🏥 <b>Pipeline Health Check</b> ({datetime.now(timezone.utc).strftime('%H:%M UTC')})\n\n"
-    text = header + combined
+    text = "\n\n".join(reports)
 
     for chat_id in chats:
         try:
@@ -170,18 +368,38 @@ def send_alerts(alerts: list[str]) -> None:
                 "text": text,
                 "parse_mode": "HTML",
                 "disable_web_page_preview": True,
+                "disable_notification": True,  # silent — don't spam
             }, timeout=10)
             if not resp.json().get("ok"):
-                logger.error("Alert delivery failed to %d: %s", chat_id, resp.text[:200])
+                logger.error("Report delivery failed to %d: %s", chat_id, resp.text[:200])
         except Exception as e:
-            logger.error("Alert delivery error to %d: %s", chat_id, e)
+            logger.error("Report delivery error to %d: %s", chat_id, e)
 
 
-def _should_alert(key: str) -> bool:
-    """Check cooldown to prevent alert spam."""
+# Keep legacy send_alerts for backward compat
+send_alerts = _send_reports
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _name(slug: str) -> str:
+    """Get display name for outlet slug."""
+    cfg = MEDIA_OUTLETS.get(slug)
+    return cfg.name if cfg else slug
+
+
+def _escape_html(text: str) -> str:
+    """Escape HTML special chars for TG."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _should_heal(key: str) -> bool:
+    """Check cooldown to prevent re-healing same issue."""
     now = datetime.now(timezone.utc)
     last = _last_alerts.get(key)
-    if last and (now - last) < ALERT_COOLDOWN:
+    if last and (now - last) < HEAL_COOLDOWN:
         return False
     _last_alerts[key] = now
     return True

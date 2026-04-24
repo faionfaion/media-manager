@@ -210,12 +210,19 @@ _LAST_RUN_FILE = Path(__file__).resolve().parent.parent.parent / "logs" / ".last
 
 
 def _already_ran(slug: str, mode: str, hour: int, minute: int) -> bool:
-    """Check if this exact schedule slot already ran (dedup within minute)."""
+    """Check if this exact schedule slot already ran today (dedup within minute).
+
+    Returns False if file header date does not match today — stale entries
+    from prior days must not block today's fires.
+    """
     key = f"{slug}:{mode}:{hour:02d}:{minute:02d}"
-    if _LAST_RUN_FILE.exists():
-        content = _LAST_RUN_FILE.read_text(encoding="utf-8").strip()
-        return key in content.split("\n")
-    return False
+    if not _LAST_RUN_FILE.exists():
+        return False
+    content = _LAST_RUN_FILE.read_text(encoding="utf-8").strip()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if not content.startswith(today):
+        return False  # stale file from a prior day
+    return key in content.split("\n")
 
 
 def _mark_ran(slug: str, mode: str, hour: int, minute: int) -> None:

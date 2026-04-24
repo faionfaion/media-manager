@@ -8,3 +8,4 @@ logs/.last_scheduled
 logs/.briefing_sent
 queue/done/
 .env
+logs/

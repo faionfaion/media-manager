@@ -54,13 +54,16 @@ if should_send_briefing():
     send_briefing()
 "
 
-# Health monitoring (check every run, alerts have 1h cooldown)
-python3 -c "
+# Health monitoring + auto-healing (every 20 min via cron, cooldown per issue)
+HEAL_MARKER="$PROJECT_DIR/logs/.last_heal"
+HEAL_INTERVAL=1200  # 20 min in seconds
+if [ ! -f "$HEAL_MARKER" ] || [ $(( $(date +%s) - $(stat -c %Y "$HEAL_MARKER" 2>/dev/null || echo 0) )) -ge $HEAL_INTERVAL ]; then
+    touch "$HEAL_MARKER"
+    python3 -c "
 import sys; sys.path.insert(0, '.')
 from app.security.auth import load_management_chats
-from app.orchestrator.monitor import check_pipeline_health, send_alerts
+from app.orchestrator.monitor import check_and_heal
 load_management_chats()
-alerts = check_pipeline_health()
-if alerts:
-    send_alerts(alerts)
+check_and_heal()
 "
+fi

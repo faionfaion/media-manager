@@ -35,6 +35,28 @@ from config.settings import (
 
 logger = logging.getLogger(__name__)
 
+
+def _patch_sdk_parser() -> None:
+    """Patch claude_code_sdk to skip unknown message types (e.g. rate_limit_event)."""
+    try:
+        from claude_code_sdk._internal import message_parser, client
+        _original = message_parser.parse_message
+
+        def _safe_parse(data):
+            try:
+                return _original(data)
+            except Exception:
+                logger.debug("Skipping unknown SDK message type: %s", data.get("type", "?"))
+                return None
+
+        message_parser.parse_message = _safe_parse
+        client.parse_message = _safe_parse
+    except Exception as e:
+        logger.warning("Could not patch SDK parser: %s", e)
+
+
+_patch_sdk_parser()
+
 _ALL_BUILTIN_TOOLS = [
     "Read", "Glob", "Grep", "Bash", "Write", "Edit",
     "WebSearch", "WebFetch", "Agent", "TodoWrite", "TodoRead",
