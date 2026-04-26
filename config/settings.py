@@ -53,10 +53,11 @@ MEDIA_OUTLETS: dict[str, MediaConfig] = {
         site_url="https://neromedia.faion.net",
         lang=["ua", "en", "pt", "es"],
         pipeline_modes=["generate", "publish", "digest"],
-        # Generate every 2h at :17 (00:17, 02:17, ..., 22:17 UTC) — 12 articles spread across 24h
-        cron_generate="17 */2 * * *",
-        # Publish hourly at :47 from 07:47 to 18:47 UTC — 12 TG slots (picks oldest unpublished)
-        cron_publish="47 7-18 * * *",
+        # 3 generate slots/day at 09:17, 13:17, 17:17 UTC — matches plan.json SLOTS in
+        # neromedia-faion-net/scripts/manage_state.py (guide, material, guide).
+        cron_generate="17 9,13,17 * * *",
+        # Publish ~1h after each generate slot: 10:47, 14:47, 18:47 UTC — picks oldest unpublished
+        cron_publish="47 10,14,18 * * *",
         cron_digest="13 20 * * *",
     ),
     "longlife": MediaConfig(
@@ -82,8 +83,8 @@ MEDIA_OUTLETS: dict[str, MediaConfig] = {
         site_url="https://pastelka.news",
         lang="ua",
         cron_generate="17 1 * * *",  # 01:17 UTC (spread across night)
-        cron_publish="5 8,11,14,17 * * *",
-        cron_digest="7 19 * * *",
+        cron_publish="",  # DISABLED 2026-04-24: digest-only model, no per-slot TG publishes
+        cron_digest="0 20 * * *",  # 20:00 UTC = 21:00 Lisbon (WEST, April)
     ),
     "ender": MediaConfig(
         name="Ender",
