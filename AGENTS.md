@@ -28,9 +28,9 @@ Unified management for all Faion media pipelines. Bot: @nero_media_manager_bot. 
 
 | Slug | Name | TG Channel | Site | Schedule |
 |------|------|------------|------|----------|
-| neromedia | NeroMedia | @neromedia_uk | neromedia.faion.net | gen every 2h at :17 (12 articles site-only, 24h spread), pub 07:47-18:47 (12 TG slots), digest 20:13 |
+| neromedia | NeroMedia | @neromedia_uk | neromedia.faion.net | gen 09:17/13:17/17:17 (3 themed slots: guide, material, guide), pub 10:47/14:47/18:47, digest 20:13 (3-character panorama header) |
 | longlife | LongLife | @long_life_media | longlife.faion.net | gen 03:03, pub 9/12/15/18:05, digest 20:43 |
-| pashtelka | Pashtelka | @pashtelka_news | pastelka.news | gen 01:17, pub 8/11/14/17:05, digest 19:07 |
+| pashtelka | Pashtelka | @pashtelka_news | pastelka.news | gen 01:17 (1 material + 1 guide + 10 news), no per-slot pub (digest-only), digest 20:00 UTC = 21:00 Lisbon |
 | ender | Ender | @ender_faion_ua | ender.faion.net | gen 04:47, pub 9/11/14/17:05, digest 19:23 |
 
 ## Bot Commands (20)
