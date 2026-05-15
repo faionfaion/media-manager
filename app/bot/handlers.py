@@ -19,8 +19,6 @@ from app.security.auth import (
     get_management_chats,
     is_authorized,
     is_management_chat,
-    register_chat,
-    unregister_chat,
 )
 from app.security.audit import audit_log, get_audit_stats, rotate_audit_logs
 from app.security.injection import InjectionResult, detect_prompt_injection, wrap_editor_input_safely
@@ -65,11 +63,35 @@ def handle_update(update: dict) -> dict | None:
         logger.warning("Blocked forwarded message from user %d", user_id)
         return _reply(chat_id, "⚠️ Forwarded messages are not accepted. Please type your command directly.")
 
-    # 1. Auth check
+    # 1. Auth check (user_id)
     if not is_authorized(user_id):
         logger.warning("Unauthorized user %d attempted command: %s", user_id, text[:50])
         audit_log("unauthorized", user_id, chat_id, text)
         return None  # Silent ignore — don't reveal bot exists to strangers
+
+    # 1b. Chat allowlist check (chat_id) — AND-combined with auth
+    if not is_management_chat(chat_id):
+        logger.warning(
+            "Authorized user %d in non-allowlisted chat %d: %s",
+            user_id, chat_id, text[:50],
+        )
+        audit_log("chat_not_allowed", user_id, chat_id, text)
+        # /register and /whoami get a one-line ack with the chat_id so the
+        # operator can add it to MEDIA_MANAGER_ALLOWED_CHATS and restart.
+        # Everything else is silent ignore.
+        if text.startswith("/whoami"):
+            return _reply(
+                chat_id,
+                f"User ID: <code>{user_id}</code>\nChat ID: <code>{chat_id}</code>",
+            )
+        if text.startswith("/register"):
+            return _reply(
+                chat_id,
+                f"Chat ID: <code>{chat_id}</code>\n"
+                f"To allow this chat, add it to <code>MEDIA_MANAGER_ALLOWED_CHATS</code> "
+                f"env (comma-separated) and restart the bot.",
+            )
+        return None
 
     # 2. Rate limit
     if not check_rate_limit(user_id):
@@ -93,19 +115,8 @@ def handle_update(update: dict) -> dict | None:
                 f"Please rephrase as a simple editorial note.",
             )
 
-    # 4. Management chat check (allow /register from anywhere by authorized users)
-    if text.startswith("/register"):
-        return _cmd_register(user_id, chat_id)
-    if text.startswith("/unregister"):
-        return _cmd_unregister(user_id, chat_id)
-
-    if not is_management_chat(chat_id):
-        # Authorized user in non-registered chat — tell them to register
-        return _reply(
-            chat_id,
-            "This chat is not registered as a management chat.\n"
-            "Send /register to enable it.",
-        )
+    # Chat allowlist already enforced above (step 1b). Reaching here means
+    # both user_id and chat_id are on the allowlist.
 
     # -- Dispatch commands --
     audit_log("command", user_id, chat_id, text)
@@ -151,6 +162,8 @@ def _dispatch_command(text: str, user_id: int, chat_id: int) -> dict | None:
         "/schedule": _cmd_schedule,
         "/logs": _cmd_logs,
         "/security": _cmd_security,
+        "/register": _cmd_register,
+        "/whoami": _cmd_whoami,
     }
 
     handler = commands.get(cmd)
@@ -573,22 +586,22 @@ def _cmd_security(args: list, user_id: int, chat_id: int) -> dict:
     ))
 
 
-def _cmd_register(user_id: int, chat_id: int) -> dict:
-    """Register current chat as management chat."""
-    if not is_authorized(user_id):
-        return _reply(chat_id, "⛔ Not authorized.")
-    if register_chat(chat_id):
-        audit_log("register_chat", user_id, chat_id, f"chat_id={chat_id}")
-        return _reply(chat_id, f"✅ Chat {chat_id} registered as management chat.")
-    return _reply(chat_id, "ℹ️ This chat is already registered.")
+def _cmd_register(args: list, user_id: int, chat_id: int) -> dict:
+    """Info: dynamic registration is disabled. Allowlist is static."""
+    return _reply(
+        chat_id,
+        f"Chat ID: <code>{chat_id}</code> (already on allowlist).\n"
+        f"Allowlist is static — set <code>MEDIA_MANAGER_ALLOWED_CHATS</code> env "
+        f"(comma-separated chat_ids) and restart the bot to change it.",
+    )
 
 
-def _cmd_unregister(user_id: int, chat_id: int) -> dict:
-    """Unregister current chat."""
-    if unregister_chat(chat_id):
-        audit_log("unregister_chat", user_id, chat_id, f"chat_id={chat_id}")
-        return _reply(chat_id, "✅ Chat unregistered.")
-    return _reply(chat_id, "ℹ️ This chat was not registered.")
+def _cmd_whoami(args: list, user_id: int, chat_id: int) -> dict:
+    """Echo current user_id and chat_id (useful when adding new chats)."""
+    return _reply(
+        chat_id,
+        f"User ID: <code>{user_id}</code>\nChat ID: <code>{chat_id}</code>",
+    )
 
 
 # -- Helpers --

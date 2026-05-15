@@ -18,9 +18,58 @@ AUTHORIZED_EDITORS: set[int] = {
     267619672,  # Ruslan (primary)
 }
 
-# Management chat IDs (group or private chats where the bot listens)
-# Populated dynamically via /register command from authorized editors
+
+def _load_allowed_chats() -> set[int]:
+    """Static allowlist of chat IDs where the bot will respond.
+
+    Source: hardcoded preset (Ruslan's DM) + env override
+    MEDIA_MANAGER_ALLOWED_CHATS (comma-separated ints, e.g. "-100123,-100456").
+    Both AUTHORIZED_EDITORS and ALLOWED_CHATS must match — chat allowlist is
+    AND-ed with user allowlist; no dynamic /register.
+    """
+    chats: set[int] = {267619672}  # Ruslan's DM (user_id == chat_id for private)
+    extra = os.getenv("MEDIA_MANAGER_ALLOWED_CHATS", "").strip()
+    if extra:
+        for token in extra.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                chats.add(int(token))
+            except ValueError:
+                pass
+    return chats
+
+
+# Static chat allowlist — to add a chat: set MEDIA_MANAGER_ALLOWED_CHATS env and restart.
+ALLOWED_CHATS: set[int] = _load_allowed_chats()
+
+# Legacy file kept for backward compat; merged into allowlist on load but no
+# longer written to. Dynamic /register is disabled.
 MANAGEMENT_CHATS_FILE = ROOT / "config" / "management_chats.json"
+
+
+# Per-user media access — controls which outlets a user sees in the Mini App
+# and which can trigger actions. Sentinel "*" means all outlets.
+# Keys are Telegram user IDs (must also be in AUTHORIZED_EDITORS for any access).
+USER_MEDIA_ACCESS: dict[int, set[str] | str] = {
+    267619672: "*",  # Ruslan — full access
+}
+
+
+def get_allowed_media(user_id: int) -> set[str]:
+    """Return the set of media slugs the user is allowed to see/control.
+
+    Returns empty set if the user is not in USER_MEDIA_ACCESS — combined with
+    the AUTHORIZED_EDITORS check this means no access. Resolves the "*" sentinel
+    to the full set of configured outlets.
+    """
+    entry = USER_MEDIA_ACCESS.get(user_id)
+    if entry is None:
+        return set()
+    if entry == "*":
+        return set(MEDIA_OUTLETS.keys())
+    return set(entry)
 
 
 @dataclass

@@ -18,7 +18,7 @@ from app.api.miniapp import get_miniapp_html
 from app.bot.handlers import handle_update
 from app.security.auth import load_management_chats
 from app.security.webapp_auth import validate_telegram_init_data
-from config.settings import API_SECRET, MANAGER_BOT_TOKEN, MEDIA_OUTLETS
+from config.settings import API_SECRET, MANAGER_BOT_TOKEN, MEDIA_OUTLETS, get_allowed_media
 
 logger = logging.getLogger(__name__)
 
@@ -168,16 +168,36 @@ async def dashboard():
 # -- Telegram Mini App --
 
 def _verify_miniapp(request: Request) -> dict:
-    """Verify Mini App auth from X-Telegram-Init-Data header."""
+    """Verify Mini App auth and attach per-user media allowlist.
+
+    Returns the user_data dict with an extra "allowed_media" key (set of slugs).
+    Raises HTTPException(401) on auth failure, HTTPException(403) if the user
+    is authenticated but has no media access at all.
+    """
+    from fastapi import HTTPException
+
     init_data = request.headers.get("X-Telegram-Init-Data", "")
     if not init_data:
-        from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Missing Telegram init data")
     try:
-        return validate_telegram_init_data(init_data)
+        user_data = validate_telegram_init_data(init_data)
     except ValueError as e:
-        from fastapi import HTTPException
         raise HTTPException(status_code=401, detail=str(e))
+
+    user_id = int(user_data["user"]["id"])
+    allowed = get_allowed_media(user_id)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="No media access for this user")
+    user_data["allowed_media"] = allowed
+    return user_data
+
+
+def _require_media_access(user_data: dict, media_slug: str) -> None:
+    """Reject requests for a media outlet the user is not allowed to manage."""
+    from fastapi import HTTPException
+
+    if media_slug not in user_data.get("allowed_media", set()):
+        raise HTTPException(status_code=403, detail=f"No access to {media_slug}")
 
 
 @app.get("/mini-app", response_class=HTMLResponse)
@@ -188,13 +208,16 @@ async def mini_app():
 
 @app.get("/api/mini-app/status")
 async def miniapp_status(request: Request):
-    """Pipeline status for Mini App."""
-    _verify_miniapp(request)
+    """Pipeline status for Mini App — only outlets the user is allowed to see."""
+    user_data = _verify_miniapp(request)
+    allowed = user_data["allowed_media"]
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     status = {}
     from app.utils import count_articles_today as _count
 
     for slug, cfg in MEDIA_OUTLETS.items():
+        if slug not in allowed:
+            continue
         articles_today = _count(cfg.project_dir / "content", today)
 
         runs_dir = cfg.project_dir / "state" / "runs"
@@ -217,7 +240,8 @@ async def miniapp_status(request: Request):
 @app.get("/api/mini-app/articles/{media_slug}")
 async def miniapp_articles(media_slug: str, request: Request):
     """List today's articles for a media outlet."""
-    _verify_miniapp(request)
+    user_data = _verify_miniapp(request)
+    _require_media_access(user_data, media_slug)
     if media_slug not in MEDIA_OUTLETS:
         return JSONResponse({"error": "Unknown media"}, status_code=404)
 
@@ -251,7 +275,8 @@ async def miniapp_articles(media_slug: str, request: Request):
 @app.get("/api/mini-app/logs/{media_slug}")
 async def miniapp_logs(media_slug: str, request: Request):
     """Pipeline log tail."""
-    _verify_miniapp(request)
+    user_data = _verify_miniapp(request)
+    _require_media_access(user_data, media_slug)
     if media_slug not in MEDIA_OUTLETS:
         return JSONResponse({"error": "Unknown media"}, status_code=404)
 
@@ -286,7 +311,13 @@ async def miniapp_note(request: Request):
         return JSONResponse({"error": f"Blocked: {inj.explanation}"}, status_code=400)
 
     user_id = user_data["user"]["id"]
-    targets = list(MEDIA_OUTLETS.keys()) if media == "all" else [media]
+    allowed = user_data["allowed_media"]
+    if media == "all":
+        targets = [s for s in MEDIA_OUTLETS.keys() if s in allowed]
+    else:
+        if media not in allowed:
+            return JSONResponse({"error": f"No access to {media}"}, status_code=403)
+        targets = [media]
 
     for slug in targets:
         cfg = MEDIA_OUTLETS.get(slug)
@@ -307,10 +338,10 @@ async def miniapp_note(request: Request):
 async def miniapp_trigger(media_slug: str, mode: str, request: Request):
     """Trigger pipeline from Mini App."""
     user_data = _verify_miniapp(request)
+    _require_media_access(user_data, media_slug)
     if media_slug not in MEDIA_OUTLETS:
         return JSONResponse({"error": "Unknown media"}, status_code=404)
 
-    cfg = MEDIA_OUTLETS[media_slug]
     if mode not in ["generate", "publish", "digest"]:
         return JSONResponse({"error": f"Invalid mode: {mode}"}, status_code=400)
 
@@ -321,13 +352,15 @@ async def miniapp_trigger(media_slug: str, mode: str, request: Request):
 
 @app.post("/api/mini-app/agent/ask")
 async def miniapp_agent_ask(request: Request):
-    """Agent ask from Mini App."""
+    """Agent ask from Mini App — scoped to user's allowed media."""
     user_data = _verify_miniapp(request)
     body = await request.json()
     question = body.get("question", "").strip()
     media = body.get("media")
     if media == "all":
         media = None
+    if media is not None:
+        _require_media_access(user_data, media)
 
     if not question:
         return JSONResponse({"error": "Empty question"}, status_code=400)
@@ -353,6 +386,7 @@ async def miniapp_agent_ask(request: Request):
 async def miniapp_agent_analyze(media_slug: str, request: Request):
     """Agent analyze from Mini App."""
     user_data = _verify_miniapp(request)
+    _require_media_access(user_data, media_slug)
     if media_slug not in MEDIA_OUTLETS:
         return JSONResponse({"error": "Unknown media"}, status_code=404)
 

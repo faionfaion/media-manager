@@ -329,6 +329,68 @@ class TestBotHandlers:
         assert response is not None
         assert "blocked" in response["text"].lower()
 
+    def test_authorized_user_in_disallowed_chat_silent(self):
+        """AND-logic: authorized user in unknown chat → silent ignore."""
+        from app.security.auth import load_management_chats
+        from app.bot.handlers import handle_update
+        load_management_chats()
+
+        update = self._make_update("/status", chat_id=-100999999)
+        response = handle_update(update)
+        assert response is None  # silent ignore for non-/register commands
+
+    def test_register_in_disallowed_chat_reveals_chat_id(self):
+        """/register in unknown chat by authorized user echoes chat_id for env config."""
+        from app.security.auth import load_management_chats
+        from app.bot.handlers import handle_update
+        load_management_chats()
+
+        update = self._make_update("/register", chat_id=-100888888)
+        response = handle_update(update)
+        assert response is not None
+        assert "-100888888" in response["text"]
+        assert "MEDIA_MANAGER_ALLOWED_CHATS" in response["text"]
+
+    def test_whoami_in_disallowed_chat_reveals_ids(self):
+        """/whoami in unknown chat by authorized user echoes both ids."""
+        from app.security.auth import load_management_chats
+        from app.bot.handlers import handle_update
+        load_management_chats()
+
+        update = self._make_update("/whoami", chat_id=-100777777)
+        response = handle_update(update)
+        assert response is not None
+        assert "-100777777" in response["text"]
+        assert "267619672" in response["text"]
+
+    def test_unauthorized_user_in_allowed_chat_silent(self):
+        """Stranger writing into Ruslan's DM → still silent."""
+        from app.security.auth import load_management_chats
+        from app.bot.handlers import handle_update
+        load_management_chats()
+
+        update = self._make_update("/status", user_id=99999, chat_id=267619672)
+        response = handle_update(update)
+        assert response is None
+
+
+class TestMiniAppMediaAccess:
+    """Per-user media access for Mini App endpoints."""
+
+    def test_full_access_resolved_from_star(self):
+        from config.settings import get_allowed_media, MEDIA_OUTLETS
+        allowed = get_allowed_media(267619672)
+        assert allowed == set(MEDIA_OUTLETS.keys())
+
+    def test_no_access_for_unknown_user(self):
+        from config.settings import get_allowed_media
+        assert get_allowed_media(99999999) == set()
+
+    def test_partial_access_returns_subset(self, monkeypatch):
+        import config.settings as cfg_settings
+        monkeypatch.setitem(cfg_settings.USER_MEDIA_ACCESS, 555, {"pashtelka", "ender"})
+        assert cfg_settings.get_allowed_media(555) == {"pashtelka", "ender"}
+
 
 if __name__ == "__main__":
     import pytest
